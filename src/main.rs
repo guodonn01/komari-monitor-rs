@@ -2,7 +2,6 @@
 
 use crate::command_parser::{Args, connect_ws};
 use crate::data_struct::{BasicInfo, RealTimeInfo};
-use crate::exec::exec_command;
 use crate::ping::ping_target;
 use futures::{SinkExt, StreamExt};
 use miniserde::{Deserialize, Serialize, json};
@@ -15,7 +14,6 @@ use tokio_tungstenite::tungstenite::{Message, Utf8Bytes};
 
 mod command_parser;
 mod data_struct;
-mod exec;
 mod get_info;
 mod ping;
 mod rustls_config;
@@ -28,10 +26,6 @@ async fn main() {
         args.http_server, args.token
     );
     let real_time_url = format!("{}/api/clients/report?token={}", args.ws_server, args.token);
-    let exec_callback_url = format!(
-        "{}/api/clients/task/result?token={}",
-        args.http_server, args.token
-    );
 
     println!("成功读取参数: {args:?}");
 
@@ -48,7 +42,6 @@ async fn main() {
         let locked_write = Arc::new(Mutex::new(write));
 
         let _listener = tokio::spawn({
-            let exec_callback_url = exec_callback_url.clone();
             let locked_write = locked_write.clone();
             async move {
                 while let Some(msg) = read.next().await {
@@ -74,23 +67,6 @@ async fn main() {
                     };
 
                     match json.message.as_str() {
-                        "exec" => {
-                            if let Err(e) = {
-                                exec_command(
-                                    {
-                                        if let Ok(parsed) = json::from_str(utf8.as_str()) {
-                                            parsed
-                                        } else {
-                                            continue;
-                                        }
-                                    },
-                                    &exec_callback_url,
-                                )
-                                .await
-                            } {
-                                eprintln!("Exec Error: {e}");
-                            }
-                        }
                         "ping" => {
                             let Ok(parsed) = json::from_str(utf8.as_str()) else {
                                 continue;
