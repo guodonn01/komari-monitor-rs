@@ -68,23 +68,20 @@ async fn main() {
 
                     match json.message.as_str() {
                         "ping" => {
-                            let Ok(parsed) = json::from_str(utf8.as_str()) else {
-                                continue;
-                            };
-
-                            match ping_target(parsed).await {
+                            // 避免重复解析
+                            let utf8_str = utf8.as_str();
+                            match ping_target(utf8_str).await {
                                 Ok(json) => {
                                     let mut write = locked_write.lock().await;
                                     println!("Ping Success: {}", json::to_string(&json));
-                                    if let Err(e) = 
-                                        write
-                                        .send(
-                                            Message::Text(
-                                            Utf8Bytes::from(json::to_string(&json)),
-                                        ))
-                                        .await {
-                                            eprintln!("推送 ping result 时发生错误，尝试重新连接: {e}");
-                                        } 
+                                    if let Err(e) = write
+                                        .send(Message::Text(Utf8Bytes::from(json::to_string(
+                                            &json,
+                                        ))))
+                                        .await
+                                    {
+                                        eprintln!("推送 ping result 时发生错误，尝试重新连接: {e}");
+                                    }
                                 }
                                 Err(err) => {
                                     eprintln!("Ping Error: {err}");
@@ -125,10 +122,12 @@ async fn main() {
             let real_time = RealTimeInfo::build(&sysinfo_sys, &networks, &disks, args.fake);
 
             let json = json::to_string(&real_time);
-            let mut write = locked_write.lock().await;
-            if let Err(e) = write.send(Message::Text(Utf8Bytes::from(json))).await {
-                eprintln!("推送 RealTime 时发生错误，尝试重新连接: {e}");
-                break;
+            {
+                let mut write = locked_write.lock().await;
+                if let Err(e) = write.send(Message::Text(Utf8Bytes::from(json))).await {
+                    eprintln!("推送 RealTime 时发生错误，尝试重新连接: {e}");
+                    break;
+                }
             }
             let end_time = start_time.elapsed();
             println!("在 {}ms 内发送完毕 RealTime 数据", end_time.as_millis());
@@ -136,11 +135,12 @@ async fn main() {
             sleep(Duration::from_millis({
                 let end = u64::try_from(end_time.as_millis()).unwrap_or(0);
                 if end > args.realtime_info_interval {
-                    continue;
+                    0 // 避免溢出
                 } else {
                     args.realtime_info_interval - end
                 }
-            })).await;
+            }))
+            .await;
         }
     }
 }

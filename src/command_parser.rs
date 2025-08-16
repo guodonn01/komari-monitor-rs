@@ -1,3 +1,4 @@
+use crate::get_info::DURATION;
 use crate::rustls_config::create_dangerous_config;
 use clap::Parser;
 use std::sync::Arc;
@@ -41,7 +42,11 @@ pub struct Args {
 
 impl Args {
     pub fn par() -> Self {
-        Self::parse()
+        let args = Self::parse();
+        unsafe {
+            DURATION = args.realtime_info_interval as f64 / 1000.0;
+        }
+        args
     }
 }
 
@@ -52,26 +57,25 @@ pub async fn connect_ws(
 ) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, String> {
     if tls {
         if !skip_verify {
-            if let Ok(ws) = connect_async_tls_with_config(url, None, false, None).await {
-                Ok(ws.0)
-            } else {
-                Err("无法创立 WebSocket 连接".into())
-            }
-        } else if let Ok(ws) = connect_async_tls_with_config(
-            url,
-            None,
-            false,
-            Some(Connector::Rustls(Arc::new(create_dangerous_config()))),
-        )
-        .await
-        {
-            Ok(ws.0)
+            connect_async_tls_with_config(url, None, false, None)
+                .await
+                .map(|ws| ws.0)
+                .map_err(|_| "无法创立 WebSocket 连接".into())
         } else {
-            Err("无法创立 WebSocket 连接".to_string())
+            connect_async_tls_with_config(
+                url,
+                None,
+                false,
+                Some(Connector::Rustls(Arc::new(create_dangerous_config()))),
+            )
+            .await
+            .map(|ws| ws.0)
+            .map_err(|_| "无法创立 WebSocket 连接".to_string())
         }
-    } else if let Ok(ws) = connect_async(url).await {
-        Ok(ws.0)
     } else {
-        Err("无法创立 WebSocket 连接".to_string())
+        connect_async(url)
+            .await
+            .map(|ws| ws.0)
+            .map_err(|_| "无法创立 WebSocket 连接".to_string())
     }
 }
