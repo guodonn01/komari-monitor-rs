@@ -43,7 +43,6 @@ async fn main() {
 
         let _listener = tokio::spawn({
             let locked_write = locked_write.clone();
-            let args = args.clone();
             async move {
                 while let Some(msg) = read.next().await {
                     let Ok(msg) = msg else {
