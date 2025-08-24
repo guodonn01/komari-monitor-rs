@@ -1,15 +1,13 @@
 use crate::data_struct::{Connections, Cpu, Disk, Load, Network, Ram, Swap};
-use miniserde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::str::FromStr;
-// use netstat2::iterate_sockets_info_without_pids;
 use sysinfo::{Disks, Networks, System};
 use tokio::task::JoinHandle;
+use ureq::config::IpFamily;
 
 pub fn arch() -> String {
-    // 直接返回常量，避免to_string()
     std::env::consts::ARCH.to_string()
 }
 
@@ -58,15 +56,13 @@ pub struct IPInfo {
     pub ipv6: Option<Ipv6Addr>,
 }
 
-#[derive(Serialize, Deserialize)]
-struct IpIo {
-    ip: String,
-}
-
 pub async fn ip() -> IPInfo {
     let ipv4: JoinHandle<Option<Ipv4Addr>> = tokio::spawn(async move {
-        let Ok(mut resp) = ureq::get("https://ipinfo.io/")
+        let Ok(mut resp) = ureq::get("https://www.cloudflare.com/cdn-cgi/trace")
             .header("User-Agent", "curl/8.7.1")
+            .config()
+            .ip_family(IpFamily::Ipv4Only)
+            .build()
             .call()
         else {
             return None;
@@ -76,18 +72,24 @@ pub async fn ip() -> IPInfo {
             return None;
         };
 
-        let json: IpIo = if let Ok(json) = miniserde::json::from_str(&body) {
-            json
-        } else {
-            return None;
-        };
+        let mut ip = String::new();
 
-        Ipv4Addr::from_str(&json.ip).ok()
+        for line in body.lines() {
+            if line.starts_with("ip=") {
+                ip = line.replace("ip=", "");
+                break;
+            }
+        }
+
+        Ipv4Addr::from_str(ip.as_str()).ok()
     });
 
     let ipv6: JoinHandle<Option<Ipv6Addr>> = tokio::spawn(async move {
-        let Ok(mut resp) = ureq::get("https://v6.ipinfo.io/")
+        let Ok(mut resp) = ureq::get("https://www.cloudflare.com/cdn-cgi/trace")
             .header("User-Agent", "curl/8.7.1")
+            .config()
+            .ip_family(IpFamily::Ipv6Only)
+            .build()
             .call()
         else {
             return None;
@@ -97,13 +99,16 @@ pub async fn ip() -> IPInfo {
             return None;
         };
 
-        let json: IpIo = if let Ok(json) = miniserde::json::from_str(&body) {
-            json
-        } else {
-            return None;
-        };
+        let mut ip = String::new();
 
-        Ipv6Addr::from_str(&json.ip).ok()
+        for line in body.lines() {
+            if line.starts_with("ip=") {
+                ip = line.replace("ip=", "");
+                break;
+            }
+        }
+
+        Ipv6Addr::from_str(ip.as_str()).ok()
     });
 
     IPInfo {
@@ -126,15 +131,56 @@ pub async fn os() -> OsInfo {
     );
     let kernel_version = System::kernel_version().unwrap_or("Unknown".to_string());
 
-    #[cfg(target_os = "linux")]
-    let virt = heim_virt::detect()
-        .await
-        .unwrap_or(heim_virt::Virtualization::Unknown)
-        .as_str()
-        .to_string();
+    let virt = {
+        #[cfg(target_os = "linux")]
+        {
+            heim_virt::detect()
+                .await
+                .unwrap_or(heim_virt::Virtualization::Unknown)
+                .as_str()
+                .to_string()
+        }
 
-    #[cfg(not(target_os = "linux"))]
-    let virt = "Unknown".to_string();
+        #[cfg(target_os = "windows")]
+        {
+            use raw_cpuid::CpuId;
+            let hypervisor_present = {
+                #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                {
+                    CpuId::new()
+                        .get_feature_info()
+                        .is_some_and(|f| f.has_hypervisor())
+                }
+                #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+                {
+                    false
+                }
+            };
+
+            let hypervisor_vendor = {
+                #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                {
+                    if hypervisor_present {
+                        CpuId::new()
+                            .get_hypervisor_info()
+                            .map(|hv| format!("{:?}", hv.identify()))
+                    } else {
+                        None
+                    }
+                }
+                #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+                {
+                    None
+                }
+            };
+
+            hypervisor_vendor.unwrap_or_else(|| "Unknown".to_string())
+        }
+        #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+        {
+            "Unknown".to_string()
+        }
+    };
 
     OsInfo {
         os,
@@ -211,8 +257,8 @@ pub fn realtime_network(network: &Networks) -> Network {
 
     unsafe {
         Network {
-            up: (up as f64 / DURATION) as u64,
-            down: (down as f64 / DURATION) as u64,
+            up: (up as f64 / (DURATION / 1000.0)) as u64,
+            down: (down as f64 / (DURATION / 1000.0)) as u64,
             total_up,
             total_down,
         }
@@ -221,13 +267,33 @@ pub fn realtime_network(network: &Networks) -> Network {
 
 #[cfg(target_os = "linux")]
 pub fn realtime_connections() -> Connections {
-    use netstat2::{
-        AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo, iterate_sockets_info_without_pids,
-    };
-    let af_flags = AddressFamilyFlags::IPV4 | AddressFamilyFlags::IPV6;
+    let tcp_v4 = fs::read_to_string("/proc/net/tcp").unwrap_or_default();
+    let tcp_v6 = fs::read_to_string("/proc/net/tcp6").unwrap_or_default();
+    let udp_v4 = fs::read_to_string("/proc/net/udp4").unwrap_or_default();
+    let udp_v6 = fs::read_to_string("/proc/net/udp6").unwrap_or_default();
+
+    Connections {
+        tcp: tcp_v4.lines()
+            .chain(tcp_v6.lines())
+            .filter(|line| {
+                line.contains(" 01 ")
+            })
+            .count() as u64,
+        udp: udp_v4.lines()
+            .chain(udp_v6.lines())
+            .filter(|line| {
+                line.contains(" 01 ")
+            })
+            .count() as u64,
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub fn realtime_connections() -> Connections {
+    use netstat2::{iterate_sockets_info_without_pids, ProtocolFlags, ProtocolSocketInfo};
     let proto_flags = ProtocolFlags::TCP | ProtocolFlags::UDP;
 
-    let Ok(sockets_iterator) = iterate_sockets_info_without_pids(af_flags, proto_flags) else {
+    let Ok(sockets_iterator) = iterate_sockets_info_without_pids(proto_flags) else {
         return Connections { tcp: 0, udp: 0 };
     };
 
@@ -246,34 +312,7 @@ pub fn realtime_connections() -> Connections {
     }
 }
 
-#[cfg(target_os = "windows")]
-pub fn realtime_connections() -> Connections {
-    use netstat2::{ProtocolFlags, ProtocolSocketInfo, iterate_sockets_info_without_pids};
-    let proto_flags = ProtocolFlags::TCP | ProtocolFlags::UDP;
-
-    let sockets_iterator = match iterate_sockets_info_without_pids(proto_flags) {
-        Ok(iterator) => iterator,
-        Err(_) => return Connections { tcp: 0, udp: 0 },
-    };
-
-    let (mut tcp_count, mut udp_count) = (0, 0);
-
-    for info_result in sockets_iterator {
-        if let Ok(info) = info_result {
-            match info.protocol_socket_info {
-                ProtocolSocketInfo::Tcp(_) => tcp_count += 1,
-                ProtocolSocketInfo::Udp(_) => udp_count += 1,
-            }
-        }
-    }
-
-    Connections {
-        tcp: tcp_count,
-        udp: udp_count,
-    }
-}
-
-#[cfg(target_os = "macos")]
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
 pub fn realtime_connections() -> Connections {
     Connections { tcp: 0, udp: 0 }
 }

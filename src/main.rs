@@ -1,10 +1,10 @@
 #![warn(clippy::all, clippy::pedantic)]
 
-use crate::command_parser::{Args, connect_ws};
+use crate::command_parser::{connect_ws, Args};
 use crate::data_struct::{BasicInfo, RealTimeInfo};
 use crate::ping::ping_target;
 use futures::{SinkExt, StreamExt};
-use miniserde::{Deserialize, Serialize, json};
+use miniserde::{json, Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
 use sysinfo::{CpuRefreshKind, DiskRefreshKind, Disks, MemoryRefreshKind, Networks, RefreshKind};
@@ -43,6 +43,7 @@ async fn main() {
 
         let _listener = tokio::spawn({
             let locked_write = locked_write.clone();
+            let args = args.clone();
             async move {
                 while let Some(msg) = read.next().await {
                     let Ok(msg) = msg else {
@@ -68,7 +69,6 @@ async fn main() {
 
                     match json.message.as_str() {
                         "ping" => {
-                            // 避免重复解析
                             let utf8_str = utf8.as_str();
                             match ping_target(utf8_str).await {
                                 Ok(json) => {
@@ -104,7 +104,14 @@ async fn main() {
         );
         sysinfo_sys.refresh_memory_specifics(MemoryRefreshKind::everything());
 
-        if let Err(e) = BasicInfo::push(&sysinfo_sys, &basic_info_url, args.fake).await {
+        if let Err(e) = BasicInfo::push(
+            &sysinfo_sys,
+            &basic_info_url,
+            args.fake,
+            args.ignore_unsafe_cert,
+        )
+        .await
+        {
             eprintln!("推送 Basic Info 时发生错误: {e}");
         } else {
             println!("推送 Basic Info 成功");
@@ -130,15 +137,10 @@ async fn main() {
                 }
             }
             let end_time = start_time.elapsed();
-            println!("在 {}ms 内发送完毕 RealTime 数据", end_time.as_millis());
 
             sleep(Duration::from_millis({
                 let end = u64::try_from(end_time.as_millis()).unwrap_or(0);
-                if end > args.realtime_info_interval {
-                    0 // 避免溢出
-                } else {
-                    args.realtime_info_interval - end
-                }
+                args.realtime_info_interval.saturating_sub(end)
             }))
             .await;
         }

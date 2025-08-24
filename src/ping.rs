@@ -6,10 +6,10 @@ use miniserde::{Deserialize, Serialize};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::str::FromStr;
 use std::time::Duration;
-use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
-use tokio::net::TcpStream;
+use time::OffsetDateTime;
 use tokio::net::lookup_host;
+use tokio::net::TcpStream;
 use tokio::time::Instant;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -32,8 +32,8 @@ pub struct PingEventCallback {
 
 // 直接接收字符串参数，避免重复解析
 pub async fn ping_target(utf8_str: &str) -> Result<PingEventCallback, String> {
-    let ping_event: PingEvent = miniserde::json::from_str(utf8_str)
-        .map_err(|_| "无法解析 PingEvent".to_string())?;
+    let ping_event: PingEvent =
+        miniserde::json::from_str(utf8_str).map_err(|_| "无法解析 PingEvent".to_string())?;
 
     match ping_event.ping_type.as_str() {
         "icmp" => {
@@ -44,8 +44,8 @@ pub async fn ping_target(utf8_str: &str) -> Result<PingEventCallback, String> {
 
             match get_ip_from_string(&ping_event.ping_target).await {
                 Ok(ip) => match ip {
-                    IpAddr::V4(ip) => icmp_ipv4(ip, ping_event.ping_task_id).await,
-                    IpAddr::V6(ip) => icmp_ipv6(ip, ping_event.ping_task_id).await,
+                    IpAddr::V4(ip) => icmp_ipv4(ip, ping_event.ping_task_id),
+                    IpAddr::V6(ip) => icmp_ipv6(ip, ping_event.ping_task_id),
                 },
                 Err(_) => Err(String::from("无法解析 IP 地址")),
             }
@@ -124,23 +124,23 @@ pub async fn get_ip_from_string(host_or_ip: &str) -> Result<IpAddr, String> {
         return Ok(ip);
     }
 
-    let host_with_port = format!("{}:80", host_or_ip);
-    match lookup_host(&host_with_port).await { // 避免克隆
+    let host_with_port = format!("{host_or_ip}:80");
+    match lookup_host(&host_with_port).await {
+        // 避免克隆
         Ok(mut ip_addresses) => {
             if let Some(first_socket_addr) = ip_addresses.next() {
                 Ok(first_socket_addr.ip())
             } else {
                 Err(format!(
-                    "No IP addresses found for the domain: {}",
-                    host_or_ip
+                    "No IP addresses found for the domain: {host_or_ip}"
                 ))
             }
         }
-        Err(e) => Err(format!("Error looking up domain: {}", e)),
+        Err(e) => Err(format!("Error looking up domain: {e}")),
     }
 }
 
-pub async fn icmp_ipv4(ip: Ipv4Addr, task_id: u64) -> Result<PingEventCallback, String> {
+pub fn icmp_ipv4(ip: Ipv4Addr, task_id: u64) -> Result<PingEventCallback, String> {
     let Ok(mut socket4) = IcmpSocket4::new() else {
         return Err(String::from("无法创建 Raw 套接字"));
     };
@@ -168,7 +168,7 @@ pub async fn icmp_ipv4(ip: Ipv4Addr, task_id: u64) -> Result<PingEventCallback, 
     if socket4.send_to(ip, packet).is_err() {
         let now = OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc());
         let finished_at = now.format(&Rfc3339).unwrap_or_default();
-        
+
         return Ok(PingEventCallback {
             type_str: String::from("ping_result"),
             task_id,
@@ -183,7 +183,7 @@ pub async fn icmp_ipv4(ip: Ipv4Addr, task_id: u64) -> Result<PingEventCallback, 
     let Ok((resp, _)) = socket4.rcv_from() else {
         let now = OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc());
         let finished_at = now.format(&Rfc3339).unwrap_or_default();
-        
+
         return Ok(PingEventCallback {
             type_str: String::from("ping_result"),
             task_id,
@@ -222,7 +222,7 @@ pub async fn icmp_ipv4(ip: Ipv4Addr, task_id: u64) -> Result<PingEventCallback, 
     }
 }
 
-pub async fn icmp_ipv6(ip: Ipv6Addr, task_id: u64) -> Result<PingEventCallback, String> {
+pub fn icmp_ipv6(ip: Ipv6Addr, task_id: u64) -> Result<PingEventCallback, String> {
     let Ok(mut socket6) = IcmpSocket6::new() else {
         return Err(String::from("无法创建 Raw 套接字"));
     };
@@ -248,7 +248,7 @@ pub async fn icmp_ipv6(ip: Ipv6Addr, task_id: u64) -> Result<PingEventCallback, 
     if socket6.send_to(ip, packet).is_err() {
         let now = OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc());
         let finished_at = now.format(&Rfc3339).unwrap_or_default();
-        
+
         return Ok(PingEventCallback {
             type_str: String::from("ping_result"),
             task_id,
@@ -263,7 +263,7 @@ pub async fn icmp_ipv6(ip: Ipv6Addr, task_id: u64) -> Result<PingEventCallback, 
     let Ok((resp, _)) = socket6.rcv_from() else {
         let now = OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc());
         let finished_at = now.format(&Rfc3339).unwrap_or_default();
-        
+
         return Ok(PingEventCallback {
             type_str: String::from("ping_result"),
             task_id,
