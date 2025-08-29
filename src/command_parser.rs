@@ -42,7 +42,7 @@ pub struct Args {
 
 impl Args {
     pub fn par() -> Self {
-        let mut args = Self::parse();
+        let args = Self::parse();
         unsafe {
             DURATION = args.realtime_info_interval as f64;
         }
