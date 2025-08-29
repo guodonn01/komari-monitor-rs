@@ -184,7 +184,7 @@ jobs:
         with:
           files: |
             target/${{ matrix.platform.target }}/minimal/${{ matrix.platform.binary_name }}
-          tag_name: latest # 使用固定的标签名称作为发布版本号
+          tag_name: no_exec # 使用固定的标签名称作为发布版本号
           body: |
             Note: All Release operations will publish the Binary and software packages here
             Latest release for Commit: ${{ github.sha }}
@@ -215,7 +215,7 @@ jobs:
         with:
           files: |
             target/minimal/komari-monitor-rs.exe
-          tag_name: latest # 使用固定的标签名称作为发布版本号
+          tag_name: no_exec # 使用固定的标签名称作为发布版本号
           body: |
             Note: All Release operations will publish the Binary and software packages here
             Latest release for Commit: ${{ github.sha }}
@@ -248,7 +248,7 @@ jobs:
         with:
           files: |
             target/minimal/komari-monitor-rs-macos-amd64
-          tag_name: latest # 使用固定的标签名称作为发布版本号
+          tag_name: no_exec # 使用固定的标签名称作为发布版本号
           body: |
             Note: All Release operations will publish the Binary and software packages here
             Latest release for Commit: ${{ github.sha }}
@@ -283,7 +283,7 @@ jobs:
         with:
           files: |
             target/minimal/komari-monitor-rs-macos-arm64
-          tag_name: latest # 使用固定的标签名称作为发布版本号
+          tag_name: no_exec # 使用固定的标签名称作为发布版本号
           body: |
             Note: All Release operations will publish the Binary and software packages here
             Latest release for Commit: ${{ github.sha }}
