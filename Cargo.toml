@@ -1,5 +1,5 @@
 [package]
-name = "komari-monitor-rs noexe"
+name = "komari-monitor-rs-noexe"
 version = "0.1.7"
 edition = "2024"
 authors = ["GenshinMinecrat <gm@highp.ing>"]
