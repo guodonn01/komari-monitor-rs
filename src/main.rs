@@ -112,7 +112,7 @@ async fn main() {
             args.fake,
             args.ignore_unsafe_cert,
         )
-        .await
+            .await
         {
             eprintln!("推送 Basic Info 时发生错误: {e}");
         } else {
@@ -144,7 +144,7 @@ async fn main() {
                 let end = u64::try_from(end_time.as_millis()).unwrap_or(0);
                 args.realtime_info_interval.saturating_sub(end)
             }))
-            .await;
+                .await;
         }
     }
 }
