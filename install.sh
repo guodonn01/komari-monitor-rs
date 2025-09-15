@@ -13,7 +13,7 @@
 # 使用方法:
 #   1. 直接运行: bash install.sh
 #   2. 带参数运行:
-#      bash install.sh --http-server "http://your.server:port" --ws-server "ws://your.server:port" --token "your_token"
+#      bash install.sh --http-server "http://your.server:port" --ws-server "ws://your.server:port" --token "your_token" [--terminal]
 #================================================================================
 
 # --- 配置 ---
@@ -22,7 +22,7 @@ GITHUB_REPO="GenshinMinecraft/komari-monitor-rs"
 # 安装路径
 INSTALL_PATH="/usr/local/bin/komari-monitor-rs"
 # 服务名称
-SERVICE_NAME="komari-monitor"
+SERVICE_NAME="komari-agent-rs"
 # systemd 服务文件路径
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 
@@ -125,6 +125,7 @@ main() {
     INTERVAL="1000"
     TLS_FLAG=""
     IGNORE_CERT_FLAG=""
+    TERMINAL_FLAG="" # <-- 新增: 为 --terminal 参数初始化一个标志变量
 
     # --- 解析命令行参数 ---
     while [ "$#" -gt 0 ]; do
@@ -136,6 +137,7 @@ main() {
             --realtime-info-interval) INTERVAL="$2"; shift 2;;
             --tls) TLS_FLAG="--tls"; shift 1;;
             --ignore-unsafe-cert) IGNORE_CERT_FLAG="--ignore-unsafe-cert"; shift 1;;
+            --terminal) TERMINAL_FLAG="--terminal"; shift 1;; # <-- 新增: 识别 --terminal 参数
             *) log_warn "未知的参数: $1"; shift 1;;
         esac
     done
@@ -149,6 +151,19 @@ main() {
     fi
     if [ -z "$TOKEN" ]; then
         read -p "请输入 Token: " TOKEN
+    fi
+
+    # <-- 新增: 交互式询问 --terminal (仅当命令行未提供时)
+    if [ -z "$TERMINAL_FLAG" ]; then
+      read -p "是否启用 Web Terminal 功能? (y/N): " enable_terminal
+      # 将输入转换为小写以方便比较
+      enable_terminal_lower=$(echo "$enable_terminal" | tr '[:upper:]' '[:lower:]')
+      if [[ "$enable_terminal_lower" == "y" || "$enable_terminal_lower" == "yes" ]]; then
+          TERMINAL_FLAG="--terminal"
+          log_info "Web Terminal 功能已启用。"
+      else
+          log_info "Web Terminal 功能未启用。"
+      fi
     fi
 
     # 验证输入
@@ -165,13 +180,14 @@ main() {
     echo "  - 上传间隔: $INTERVAL ms"
     echo "  - 启用 TLS: ${TLS_FLAG:--}"
     echo "  - 忽略证书: ${IGNORE_CERT_FLAG:--}"
+    echo "  - 启用 Terminal: ${TERMINAL_FLAG:--}" # <-- 新增: 显示 terminal 状态
     echo ""
 
     # --- 安装流程 ---
     install_dependencies
 
     ARCH_FILE=$(get_arch)
-    DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/releases/download/latest/${ARCH_FILE}"
+    DOWNLOAD_URL="https://ghfast.top/https://github.com/${GITHUB_REPO}/releases/download/latest/${ARCH_FILE}"
 
     log_info "检测到系统架构: $(uname -m)"
     log_info "准备从以下地址下载文件: ${DOWNLOAD_URL}"
@@ -194,6 +210,10 @@ main() {
     fi
     if [ -n "$IGNORE_CERT_FLAG" ]; then
         EXEC_START_CMD="$EXEC_START_CMD $IGNORE_CERT_FLAG"
+    fi
+    # <-- 新增: 将 --terminal 标志添加到启动命令
+    if [ -n "$TERMINAL_FLAG" ]; then
+        EXEC_START_CMD="$EXEC_START_CMD $TERMINAL_FLAG"
     fi
 
     # 使用 cat 和 EOF 创建服务文件
