@@ -90,7 +90,7 @@ pub async fn ip() -> IPInfo {
     });
 
     let ipv6: JoinHandle<Option<Ipv6Addr>> = tokio::spawn(async move {
-        let Ok(mut resp) = ureq::get("https://api6.ipify.org?format=json")
+        let Ok(mut resp) = ureq::get("https://6.ipinfo.io")
             .header("User-Agent", "curl/8.7.1")
             .config()
             .ip_family(IpFamily::Ipv6Only)
