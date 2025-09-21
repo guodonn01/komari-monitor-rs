@@ -1,10 +1,10 @@
 // #![warn(clippy::all, clippy::pedantic)]
 
-use crate::command_parser::{connect_ws, Args};
+use crate::command_parser::{Args, connect_ws};
 use crate::data_struct::{BasicInfo, RealTimeInfo};
 use crate::ping::ping_target;
 use futures::{SinkExt, StreamExt};
-use miniserde::{json, Deserialize, Serialize};
+use miniserde::{Deserialize, Serialize, json};
 use std::sync::Arc;
 use std::time::Duration;
 use sysinfo::{CpuRefreshKind, DiskRefreshKind, Disks, MemoryRefreshKind, Networks, RefreshKind};
@@ -69,26 +69,32 @@ async fn main() {
                         continue;
                     };
 
+                    let utf8_cloned = utf8.clone();
+
                     match json.message.as_str() {
                         "ping" => {
-                            let utf8_str = utf8.as_str();
-                            match ping_target(utf8_str).await {
-                                Ok(json) => {
-                                    let mut write = locked_write.lock().await;
-                                    println!("Ping Success: {}", json::to_string(&json));
-                                    if let Err(e) = write
-                                        .send(Message::Text(Utf8Bytes::from(json::to_string(
-                                            &json,
-                                        ))))
-                                        .await
-                                    {
-                                        eprintln!("推送 ping result 时发生错误，尝试重新连接: {e}");
+                            let locked_write_for_ping = locked_write.clone();
+                            tokio::spawn(async move {
+                                match ping_target(&utf8_cloned).await {
+                                    Ok(json_res) => {
+                                        let mut write = locked_write_for_ping.lock().await;
+                                        println!("Ping Success: {}", json::to_string(&json_res));
+                                        if let Err(e) = write
+                                            .send(Message::Text(Utf8Bytes::from(json::to_string(
+                                                &json_res,
+                                            ))))
+                                            .await
+                                        {
+                                            eprintln!(
+                                                "推送 ping result 时发生错误，尝试重新连接: {e}"
+                                            );
+                                        }
+                                    }
+                                    Err(err) => {
+                                        eprintln!("Ping Error: {err}");
                                     }
                                 }
-                                Err(err) => {
-                                    eprintln!("Ping Error: {err}");
-                                }
-                            }
+                            });
                         }
                         _ => {}
                     }
@@ -106,12 +112,11 @@ async fn main() {
         );
         sysinfo_sys.refresh_memory_specifics(MemoryRefreshKind::everything());
 
-        if let Err(e) = BasicInfo::push(
-            &sysinfo_sys,
-            &basic_info_url,
-            args.fake,
-            args.ignore_unsafe_cert,
-        )
+        let basic_info = BasicInfo::build(&sysinfo_sys, args.fake, &args.ip_provider).await;
+        println!("{basic_info:?}");
+
+        if let Err(e) = basic_info
+            .push(&basic_info_url, args.ignore_unsafe_cert)
             .await
         {
             eprintln!("推送 Basic Info 时发生错误: {e}");
@@ -144,7 +149,7 @@ async fn main() {
                 let end = u64::try_from(end_time.as_millis()).unwrap_or(0);
                 args.realtime_info_interval.saturating_sub(end)
             }))
-                .await;
+            .await;
         }
     }
 }
