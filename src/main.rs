@@ -1,106 +1,79 @@
 // #![warn(clippy::all, clippy::pedantic)]
 
-use crate::command_parser::{Args, connect_ws};
+use crate::callbacks::handle_callbacks;
+use crate::command_parser::Args;
 use crate::data_struct::{BasicInfo, RealTimeInfo};
-use crate::ping::ping_target;
+use crate::utils::{build_urls, connect_ws, init_logger};
+use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt};
-use miniserde::{Deserialize, Serialize, json};
+use log::{error, info};
+use miniserde::json;
 use std::sync::Arc;
 use std::time::Duration;
 use sysinfo::{CpuRefreshKind, DiskRefreshKind, Disks, MemoryRefreshKind, Networks, RefreshKind};
+use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use tokio::time::sleep;
 use tokio_tungstenite::tungstenite::{Message, Utf8Bytes};
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
 mod command_parser;
 mod data_struct;
-mod get_info;
-mod ping;
 mod rustls_config;
 
+mod callbacks;
+mod get_info;
 #[cfg(target_os = "linux")]
 mod netlink;
+mod utils;
 
 #[tokio::main]
 async fn main() {
     let args = Args::par();
-    let basic_info_url = format!(
-        "{}/api/clients/uploadBasicInfo?token={}",
-        args.http_server, args.token
-    );
-    let real_time_url = format!("{}/api/clients/report?token={}", args.ws_server, args.token);
 
-    println!("成功读取参数: {args:?}");
+    init_logger(&args.log_level);
+
+    let connection_urls = build_urls(&args.http_server, &args.ws_server, &args.token).unwrap();
+
+    info!("成功读取参数: {args:?}");
 
     loop {
-        let Ok(ws_stream) = connect_ws(&real_time_url, args.tls, args.ignore_unsafe_cert).await
+        let Ok(ws_stream) = connect_ws(
+            &connection_urls.real_time_url,
+            args.tls,
+            args.ignore_unsafe_cert,
+        )
+        .await
         else {
             eprintln!("无法连接到 Websocket 服务器，5 秒后重新尝试");
             sleep(Duration::from_secs(5)).await;
             continue;
         };
 
-        let (write, mut read) = ws_stream.split();
+        let (write, mut read): (
+            SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
+            SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
+        ) = ws_stream.split();
 
-        let locked_write = Arc::new(Mutex::new(write));
+        let locked_write: Arc<
+            Mutex<SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>>,
+        > = Arc::new(Mutex::new(write));
 
-        let _listener = tokio::spawn({
-            let locked_write = locked_write.clone();
-            async move {
-                while let Some(msg) = read.next().await {
-                    let Ok(msg) = msg else {
-                        continue;
-                    };
-
-                    let Ok(utf8) = msg.into_text() else {
-                        continue;
-                    };
-
-                    println!("主端传入信息: {}", utf8.as_str());
-
-                    #[derive(Serialize, Deserialize)]
-                    struct Msg {
-                        message: String,
-                    }
-
-                    let json: Msg = if let Ok(value) = json::from_str(utf8.as_str()) {
-                        value
-                    } else {
-                        continue;
-                    };
-
-                    let utf8_cloned = utf8.clone();
-
-                    match json.message.as_str() {
-                        "ping" => {
-                            let locked_write_for_ping = locked_write.clone();
-                            tokio::spawn(async move {
-                                match ping_target(&utf8_cloned).await {
-                                    Ok(json_res) => {
-                                        let mut write = locked_write_for_ping.lock().await;
-                                        println!("Ping Success: {}", json::to_string(&json_res));
-                                        if let Err(e) = write
-                                            .send(Message::Text(Utf8Bytes::from(json::to_string(
-                                                &json_res,
-                                            ))))
-                                            .await
-                                        {
-                                            eprintln!(
-                                                "推送 ping result 时发生错误，尝试重新连接: {e}"
-                                            );
-                                        }
-                                    }
-                                    Err(err) => {
-                                        eprintln!("Ping Error: {err}");
-                                    }
-                                }
-                            });
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        });
+        // Handle callbacks
+        {
+            let args_cloned = args.clone();
+            let connection_urls_cloned = connection_urls.clone();
+            let locked_write_cloned = locked_write.clone();
+            let _listener = tokio::spawn(async move {
+                handle_callbacks(
+                    &args_cloned,
+                    &connection_urls_cloned,
+                    &mut read,
+                    &locked_write_cloned,
+                )
+                .await
+            });
+        }
 
         let mut sysinfo_sys = sysinfo::System::new();
         let mut networks = Networks::new_with_refreshed_list();
@@ -113,16 +86,10 @@ async fn main() {
         sysinfo_sys.refresh_memory_specifics(MemoryRefreshKind::everything());
 
         let basic_info = BasicInfo::build(&sysinfo_sys, args.fake, &args.ip_provider).await;
-        println!("{basic_info:?}");
 
-        if let Err(e) = basic_info
-            .push(&basic_info_url, args.ignore_unsafe_cert)
-            .await
-        {
-            eprintln!("推送 Basic Info 时发生错误: {e}");
-        } else {
-            println!("推送 Basic Info 成功");
-        }
+        basic_info
+            .push(&connection_urls.basic_info_url, args.ignore_unsafe_cert)
+            .await;
 
         loop {
             let start_time = tokio::time::Instant::now();
@@ -139,7 +106,7 @@ async fn main() {
             {
                 let mut write = locked_write.lock().await;
                 if let Err(e) = write.send(Message::Text(Utf8Bytes::from(json))).await {
-                    eprintln!("推送 RealTime 时发生错误，尝试重新连接: {e}");
+                    error!("推送 RealTime 时发生错误，尝试重新连接: {e}");
                     break;
                 }
             }
