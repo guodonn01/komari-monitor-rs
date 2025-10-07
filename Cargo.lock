@@ -805,7 +805,7 @@ checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
 
 [[package]]
 name = "komari-monitor-rs"
-version = "0.2.2-noexec"
+version = "0.2.4-noexec"
 dependencies = [
  "clap",
  "futures",
