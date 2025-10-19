@@ -82,11 +82,25 @@ Agent
     nixosConfigurations."nixos" = nixpkgs.lib.nixosSystem {
       system = "x86_64-linux";
       modules = [
+        komari-monitor-rs.nixosModules.default
         { pkgs, ...}: {
-          environment.systemPackages = [
-            # 安装 komari-monitor-rs
-            komari-monitor-rs.packages.${pkgs.system}.default
-          ];
+          # 开启并配置 komari-monitor-rs 服务
+          services.komari-monitor-rs = {
+            enable = true;
+            settings = {
+              http-server = "komari.example.com:12345";
+              ws-server = "ws-komari.example.com:54321";
+              token = "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
+              ip-provider = "ipinfo";
+              terminal = true;
+              terminal-entry = "default";
+              fake = 1;
+              realtime-info-interval = 1000;
+              tls = true;
+              ignore-unsafe-cert = false;
+              log-level = "info";
+            };
+          };
         }
       ];
     };
