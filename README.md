@@ -88,8 +88,8 @@ Agent
           services.komari-monitor-rs = {
             enable = true;
             settings = {
-              http-server = "komari.example.com:12345";
-              ws-server = "ws-komari.example.com:54321";
+              http-server = "https://komari.example.com:12345";
+              ws-server = "ws://ws-komari.example.com:54321";
               token = "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
               ip-provider = "ipinfo";
               terminal = true;
