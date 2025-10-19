@@ -21,10 +21,13 @@ Agent
 ## 一键脚本
 
 - 交互模式
+
   ```bash
   wget -O setup-client-rs.sh "https://ghfast.top/https://raw.githubusercontent.com/GenshinMinecraft/komari-monitor-rs/refs/heads/main/install.sh" && chmod +x setup-client-rs.sh && bash ./setup-client-rs.sh
   ```
+
 - 直接传入参数
+
   ```bash
   wget -O setup-client-rs.sh "https://ghfast.top/https://raw.githubusercontent.com/GenshinMinecraft/komari-monitor-rs/refs/heads/main/install.sh" && chmod +x setup-client-rs.sh
   bash setup-client-rs.sh --http-server "http://your.server:port" --ws-server "ws://your.server:port" --token "your_token"
@@ -57,6 +60,39 @@ Agent
 - 自动更新
 - 自动安装
 - Bash / PWSH 一键脚本
+
+## Nix 安装
+
+如果你使用 Nix / NixOS，可以直接将本仓库作为 Flake 引入使用：
+
+> [!WARNING]
+> 以下是最小化示例配置，单独使用无法工作
+
+```nix
+{
+  # 将 komari-monitor-rs 作为 flake 引入
+  inputs = {
+    nixpkgs.url = "nixpkgs/nixos-unstable";
+    komari-monitor-rs = {
+      url = "github:GenshinMinecraft/komari-monitor-rs";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+  };
+  outputs = { nixpkgs, komari-monitor-rs, ... }: {
+    nixosConfigurations."nixos" = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        { pkgs, ...}: {
+          environment.systemPackages = [
+            # 安装 komari-monitor-rs
+            komari-monitor-rs.packages.${pkgs.system}.default
+          ];
+        }
+      ];
+    };
+  };
+}
+```
 
 ## 下载
 
