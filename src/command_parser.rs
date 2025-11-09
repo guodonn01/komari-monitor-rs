@@ -4,7 +4,8 @@ use std::fs;
 #[derive(Parser, Debug, Clone)]
 #[command(
     version,
-    long_about = "komari-monitor-rs is a third-party high-performance monitoring agent for the komari monitoring service."
+    long_about = "komari-monitor-rs is a third-party high-performance monitoring agent for the komari monitoring service.",
+    after_long_help = "必须设置 --http-server / --token\n--ip-provider 接受 cloudflare / ipinfo\n--log-level 接受 error, warn, info, debug, trace\n\n本 Bot 开源于 Github , 使用强力的 Rust 驱动, 爱来自 Komari"
 )]
 pub struct Args {
     /// 设置主端 Http 地址
