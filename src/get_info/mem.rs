@@ -51,6 +51,7 @@ pub fn realtime_disk(disk: &Disks) -> Disk {
     let mut used_disk: u64 = 0;
     let disk_list = filter_disks(disk);
     for disk in disk_list {
+        trace!("FILTER DISK: {disk:?}");
         used_disk += disk.total_space() - disk.available_space();
     }
 
@@ -60,7 +61,7 @@ pub fn realtime_disk(disk: &Disks) -> Disk {
 }
 
 pub fn filter_disks(disks: &Disks) -> Vec<&sysinfo::Disk> {
-    let allowed = [
+    let allowed_fs = [
         "apfs",
         "ext4",
         "ext3",
@@ -79,13 +80,36 @@ pub fn filter_disks(disks: &Disks) -> Vec<&sysinfo::Disk> {
         "fuse.rclone",
     ];
 
-    let filtered: Vec<&sysinfo::Disk> = disks
+    let filtered_fs: Vec<&sysinfo::Disk> = disks
         .iter() // 返回 &Disk
         .filter(|disk| {
             let fs = disk.file_system().to_string_lossy();
-            allowed.contains(&fs.as_ref())
+            allowed_fs.contains(&fs.as_ref())
         })
         .collect();
 
-    filtered
+    let exclude_keywords = [
+        "/snap",
+        "/var/lib/docker",
+        "/var/lib/lxcfs",
+        "/run/user",
+        "/tmp",
+        "/dev",
+        "/sys",
+        "/proc",
+        "/boot",
+        "/lost+found",
+        "/nix/share",
+    ];
+
+    let filtered_special_mount_point: Vec<&sysinfo::Disk> =
+        filtered_fs
+            .into_iter()
+            .filter(|disk| {
+                let mount_point = disk.mount_point().to_string_lossy();
+                !exclude_keywords.iter().any(|keyword| mount_point.contains(keyword))
+            })
+            .collect();
+
+    filtered_special_mount_point
 }
