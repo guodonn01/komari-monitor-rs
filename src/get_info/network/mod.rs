@@ -12,12 +12,19 @@ pub fn realtime_network(network: &Networks) -> Network {
     let mut down = 0;
 
     for (name, data) in network {
-        if name.contains("lo")
-            || name.contains("veth")
+        if name.contains("br")
+            || name.contains("cni")
             || name.contains("docker")
-            || name.contains("tun")
-            || name.contains("br")
+            || name.contains("podman")
+            || name.contains("flannel")
+            || name.contains("lo")
+            || name.contains("veth")
+            || name.contains("virbr")
+            || name.contains("vmbr")
             || name.contains("tap")
+            || name.contains("tun")
+            || name.contains("fwln")
+            || name.contains("fwpr")
         {
             continue;
         }
