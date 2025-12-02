@@ -99,7 +99,7 @@ pub fn filter_disks(disks: &Disks) -> Vec<&sysinfo::Disk> {
         "/proc",
         "/boot",
         "/lost+found",
-        "/nix/share",
+        "/nix/store",
     ];
 
     let filtered_special_mount_point: Vec<&sysinfo::Disk> =
