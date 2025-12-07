@@ -52,7 +52,7 @@ impl NetworkInfo {
         output
     }
 
-    /// 解码器：从 String 解析出 NetworkInfo
+    /// Decoder: Parses NetworkInfo from a String
     pub fn decode(input: &str) -> Result<Self, String> {
         let mut disable_network_statistics = None;
         let mut network_duration = None;
@@ -111,7 +111,7 @@ impl NetworkInfo {
             }
         }
 
-        // 组装结构体，检查必填字段是否存在
+        // Assemble the struct, check if required fields exist
         Ok(NetworkInfo {
             config: NetworkConfig {
                 disable_network_statistics: disable_network_statistics
@@ -140,7 +140,7 @@ async fn get_or_init_latest_network_info(network_config: &NetworkConfig) -> (Fil
         .open(&network_config.network_save_path)
         .await
         .unwrap_or_else(|e| {
-            error!("无法打开 网络流量信息 文件, 请检查权限: {e}");
+            error!("Failed to open network traffic info file, please check permissions: {e}");
             exit(1);
         });
 
@@ -148,7 +148,7 @@ async fn get_or_init_latest_network_info(network_config: &NetworkConfig) -> (Fil
     file.read_to_string(&mut raw_data)
         .await
         .unwrap_or_else(|e| {
-            error!("无法读取 网络流量信息 文件: {e}");
+            error!("Failed to read network traffic info file: {e}");
             exit(1);
         });
 
@@ -164,23 +164,25 @@ async fn get_or_init_latest_network_info(network_config: &NetworkConfig) -> (Fil
         rewrite_network_info_file(&mut file, network_info.encode())
             .await
             .unwrap_or_else(|e| {
-                error!("无法写入 网络流量信息 文件: {e}");
+                error!("Failed to write network traffic info file: {e}");
                 exit(1);
             });
-        info!("网络流量信息 文件无数据，可能为第一次运行或更改了保存路径，已新建");
+        info!(
+            "Network traffic info file is empty, possibly first run or save path changed, created new file"
+        );
         network_info
     } else {
         let raw_network_info = NetworkInfo::decode(&raw_data).unwrap_or_else(|e| {
-            error!("无法解析 网络流量信息 文件: {e}");
+            error!("Failed to parse network traffic info file: {e}");
             exit(1);
         });
 
         if &raw_network_info.config != network_config {
             warn!(
-                "网络流量信息 文件配置项与原来不符，即将在 3sec 后覆盖原文件并清零统计数据，若需停止请 Ctrl+C"
+                "Network traffic info file configuration does not match, overwriting file and resetting statistics in 3 seconds. Press Ctrl+C to stop."
             );
             tokio::time::sleep(Duration::from_secs(3)).await;
-            warn!("开始清理 网络流量信息");
+            warn!("Starting to clear network traffic info");
             let network_info = NetworkInfo {
                 config: network_config.clone(),
                 source_tx: 0,
@@ -192,10 +194,10 @@ async fn get_or_init_latest_network_info(network_config: &NetworkConfig) -> (Fil
             rewrite_network_info_file(&mut file, network_info.encode())
                 .await
                 .unwrap_or_else(|e| {
-                    error!("无法写入 网络流量信息 文件: {e}");
+                    error!("Failed to write network traffic info file: {e}");
                     exit(1);
                 });
-            info!("已清理 网络流量信息");
+            info!("Network traffic info cleared");
             network_info
         } else {
             raw_network_info
@@ -214,7 +216,7 @@ async fn get_or_init_latest_network_info(network_config: &NetworkConfig) -> (Fil
     rewrite_network_info_file(&mut file, new_network_info.encode())
         .await
         .unwrap_or_else(|e| {
-            error!("无法写入 网络流量信息 文件: {e}");
+            error!("Failed to write network traffic info file: {e}");
             exit(1);
         });
 
@@ -233,7 +235,7 @@ pub async fn network_saver(
         let (mut file, mut network_info) = get_or_init_latest_network_info(&network_config).await;
         let mut networks = Networks::new_with_refreshed_list();
 
-        // 新增计数器，用来累计内存更新次数
+        // Add a counter to accumulate memory update times
         let mut memory_update_count = 0;
 
         loop {
@@ -258,16 +260,16 @@ pub async fn network_saver(
                     rewrite_network_info_file(&mut file, String::new())
                         .await
                         .unwrap_or_else(|e| {
-                            error!("无法写入 网络流量信息 文件: {e}");
+                            error!("Failed to write network traffic info file: {e}");
                             exit(1);
                         });
-                    info!("已完成一个周期的流量统计，已清空数据");
+                    info!("Finished one cycle of traffic statistics, data cleared");
                     break;
                 } else {
                     if let Err(e) =
                         rewrite_network_info_file(&mut file, network_info.encode()).await
                     {
-                        error!("无法写入 网络流量信息 文件: {e}");
+                        error!("Failed to write network traffic info file: {e}");
                         continue;
                     }
                     memory_update_count = 0;
@@ -281,7 +283,7 @@ pub async fn network_saver(
                 ))
                 .await
             {
-                error!("无法发送 流量数据: {e}");
+                error!("Failed to send traffic data: {e}");
                 continue;
             }
 

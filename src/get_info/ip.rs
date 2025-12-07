@@ -119,7 +119,7 @@ pub async fn ip_ipinfo() -> IPInfo {
         ipv6: ipv6.await.unwrap(),
     };
 
-    trace!("IP INFO (ipinfo) 获取成功: {ip_info:?}");
+    trace!("IP INFO (ipinfo) successfully retrieved: {ip_info:?}");
 
     ip_info
 }
@@ -220,7 +220,7 @@ pub async fn ip_cloudflare() -> IPInfo {
         ipv6: ipv6.await.unwrap(),
     };
 
-    trace!("IP INFO (cloudflare) 获取成功: {ip_info:?}");
+    trace!("IP INFO (cloudflare) successfully retrieved: {ip_info:?}");
 
     ip_info
 }

@@ -40,7 +40,7 @@ pub async fn handle_callbacks(
             continue;
         };
 
-        info!("主端传入信息: {}", utf8.as_str());
+        info!("Received message from main server: {}", utf8.as_str());
 
         let json: Msg = if let Ok(value) = json::from_str(utf8.as_str()) {
             value
@@ -71,7 +71,7 @@ pub async fn handle_callbacks(
                         }
                     });
                 } else {
-                    error!("终端功能未启用");
+                    error!("Terminal feature is disabled");
                 }
             }
 
@@ -81,12 +81,14 @@ pub async fn handle_callbacks(
                     match ping_target(&utf8_cloned).await {
                         Ok(json_res) => {
                             let mut write = locked_write_for_ping.lock().await;
-                            info!("Ping Success: {}", json::to_string(&json_res));
+                            info!("Ping successful: {}", json::to_string(&json_res));
                             if let Err(e) = write
                                 .send(Message::Text(Utf8Bytes::from(json::to_string(&json_res))))
                                 .await
                             {
-                                error!("推送 ping result 时发生错误，尝试重新连接: {e}");
+                                error!(
+                                    "Error occurred while pushing ping result, attempting to reconnect: {e}"
+                                );
                             }
                         }
                         Err(err) => {
@@ -106,7 +108,7 @@ pub async fn handle_callbacks(
                         let ws_url = match get_pty_ws_link(&utf8_cloned, &ws_terminal_url) {
                             Ok(ws_url) => ws_url,
                             Err(e) => {
-                                error!("无法获取 PTY Websocket URL: {e}");
+                                error!("Failed to get PTY WebSocket URL: {e}");
                                 return;
                             }
                         };
@@ -115,17 +117,17 @@ pub async fn handle_callbacks(
                             match connect_ws(&ws_url, args.tls, args.ignore_unsafe_cert).await {
                                 Ok(ws_stream) => ws_stream,
                                 Err(e) => {
-                                    error!("无法连接到 PTY Websocket: {e}");
+                                    error!("Failed to connect to PTY WebSocket: {e}");
                                     return;
                                 }
                             };
 
                         if let Err(e) = handle_pty_session(ws_stream, &args.terminal_entry).await {
-                            error!("PTY Websocket 处理错误: {e}");
+                            error!("PTY WebSocket handling error: {e}");
                         }
                     });
                 } else {
-                    error!("终端功能未启用");
+                    error!("Terminal feature is disabled");
                 }
             }
             _ => {}

@@ -10,7 +10,7 @@ pub fn realtime_load() -> Load {
         load5: load.five,
         load15: load.fifteen,
     };
-    trace!("REALTIME LOAD 获取成功: {:?}", load_info);
+    trace!("REALTIME LOAD successfully retrieved: {:?}", load_info);
     load_info
 }
 
@@ -21,6 +21,6 @@ pub fn realtime_load() -> Load {
         load5: 0.0,
         load15: 0.0,
     };
-    trace!("REALTIME LOAD 获取成功: {load_info:?}");
+    trace!("REALTIME LOAD successfully retrieved: {load_info:?}");
     load_info
 }

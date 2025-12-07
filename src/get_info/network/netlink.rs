@@ -9,7 +9,7 @@ const ALL_TCP_STATES: u32 = 0xffffffff;
 const TCP_ESTABLISHED: u32 = 1;
 const NLMSG_HDRLEN: usize = size_of::<libc::nlmsghdr>();
 
-/// ---- 与内核对齐的 C 结构体 ----
+/// ---- C structures aligned with kernel ----
 
 // from linux/inet_diag.h
 #[repr(C)]
@@ -17,7 +17,7 @@ const NLMSG_HDRLEN: usize = size_of::<libc::nlmsghdr>();
 struct InetDiagSockId {
     idiag_sport: u16,
     idiag_dport: u16,
-    idiag_src: [u32; 4], // 足够容纳 IPv6（IPv4 只用 idiag_src[0]）
+    idiag_src: [u32; 4], // Enough to hold IPv6 (IPv4 only uses idiag_src[0])
     idiag_dst: [u32; 4],
     idiag_if: u32,
     idiag_cookie: [u32; 2],
@@ -35,18 +35,18 @@ struct InetDiagReqV2 {
     id: InetDiagSockId,
 }
 
-/// 入口：按协议统计连接消息条数
+/// Entry: Count connection messages by protocol
 pub fn connections_count_with_protocol(family: u8, protocol: u8) -> io::Result<u64> {
-    // 构造 netlink header
+    // Construct netlink header
     let hdr = libc::nlmsghdr {
-        nlmsg_len: 0, // 先置 0，serialize 时回填
+        nlmsg_len: 0, // Set to 0 first, filled back during serialization
         nlmsg_type: SOCK_DIAG_BY_FAMILY,
         nlmsg_flags: (libc::NLM_F_DUMP | libc::NLM_F_REQUEST) as u16,
         nlmsg_seq: 0,
         nlmsg_pid: 0,
     };
 
-    // 构造 inet_diag_req_v2
+    // Construct inet_diag_req_v2
     let mut req = InetDiagReqV2 {
         family,
         protocol,
@@ -63,15 +63,15 @@ pub fn connections_count_with_protocol(family: u8, protocol: u8) -> io::Result<u
         },
     };
 
-    // TCP 只查询 ESTABLISHED 状态的
+    // For TCP, only query ESTABLISHED state
     if protocol == libc::IPPROTO_TCP as u8 {
         req.states = 1 << TCP_ESTABLISHED;
     }
 
-    // 序列化成一条 Netlink 消息（header + payload）
+    // Serialize into a Netlink message (header + payload)
     let msg = serialize_netlink_message(&hdr, &req)?;
 
-    // 发送并只统计返回消息条数
+    // Send and only count the number of returned messages
     netlink_inet_diag_only_count(&msg)
 }
 
@@ -102,14 +102,14 @@ fn netlink_inet_diag_only_count(request: &[u8]) -> io::Result<u64> {
         return Err(io::Error::last_os_error());
     }
 
-    // 准备读 buffer
+    // Prepare read buffer
     let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) as usize };
     let mut buf: Vec<u8> = vec![0u8; page_size];
 
     let mut total_count: u64 = 0;
 
     loop {
-        // 每次用整块 buf，当次有效长度是 nr
+        // Use the whole buf each time, nr is the effective length for this batch
         let nr = unsafe {
             recvfrom(
                 fd,
@@ -140,7 +140,7 @@ fn netlink_inet_diag_only_count(request: &[u8]) -> io::Result<u64> {
     Ok(total_count)
 }
 
-/// 只数本批次 buffer 里的 netlink 消息条数；遇到 DONE/ERROR 返回 done=true
+/// Only count netlink messages in this batch buffer; return done=true upon DONE/ERROR
 fn count_netlink_messages(mut b: &[u8]) -> io::Result<(u64, bool)> {
     let mut msgs: u64 = 0;
     let mut done = false;
@@ -158,13 +158,13 @@ fn count_netlink_messages(mut b: &[u8]) -> io::Result<(u64, bool)> {
     Ok((msgs, done))
 }
 
-/// 解析当前切片的 nlmsghdr，返回（对齐后的本条长度，是否 DONE/ERROR）
+/// Parse nlmsghdr of the current slice, return (aligned length of this message, whether DONE/ERROR)
 fn netlink_message_header(b: &[u8]) -> io::Result<(usize, bool)> {
     if b.len() < NLMSG_HDRLEN {
         return Err(io::Error::from_raw_os_error(libc::EINVAL));
     }
 
-    // 安全地读出头（按本机字节序）
+    // Safely read the header (in native byte order)
     let h = unsafe { &*(b.as_ptr() as *const libc::nlmsghdr) };
     let len = h.nlmsg_len as usize;
     let l = nlm_align_of(len as i32) as usize;
@@ -180,18 +180,18 @@ fn netlink_message_header(b: &[u8]) -> io::Result<(usize, bool)> {
     Ok((l, false))
 }
 
-/// 对齐到 4 字节
+/// Align to 4 bytes
 #[inline]
 fn nlm_align_of(msglen: i32) -> i32 {
     (msglen + libc::NLA_ALIGNTO - 1) & !(libc::NLA_ALIGNTO - 1)
 }
 
-/// 将 (header, payload) 序列化为一条 Netlink 消息（回填 header.len）
+/// Serialize (header, payload) into a Netlink message (fill back header.len)
 fn serialize_netlink_message(hdr: &libc::nlmsghdr, req: &InetDiagReqV2) -> io::Result<Vec<u8>> {
     let total = NLMSG_HDRLEN + size_of::<InetDiagReqV2>();
     let mut msg = vec![0u8; total];
 
-    // 写 header（先拷一份，回填 nlmsg_len）
+    // Write header (copy first, fill back nlmsg_len)
     let mut h = *hdr;
     h.nlmsg_len = total as u32;
 
@@ -213,7 +213,7 @@ fn serialize_netlink_message(hdr: &libc::nlmsghdr, req: &InetDiagReqV2) -> io::R
     Ok(msg)
 }
 
-/// 简易 FD 守卫
+/// Simple FD guard
 struct FdGuard(RawFd);
 impl Drop for FdGuard {
     fn drop(&mut self) {

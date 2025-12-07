@@ -5,7 +5,7 @@ use sysinfo::System;
 
 pub fn arch() -> String {
     let arch = std::env::consts::ARCH.to_string();
-    trace!("ARCH 获取成功: {arch}");
+    trace!("ARCH successfully retrieved: {arch}");
     arch
 }
 
@@ -30,7 +30,7 @@ pub fn cpu_info_without_usage(sysinfo_sys: &System) -> CPUInfoWithOutUsage {
 
     let cpu_info = CPUInfoWithOutUsage { name, cores };
 
-    trace!("CPU INFO WITH OUT USAGE 获取成功: {cpu_info:?}");
+    trace!("CPU INFO WITH OUT USAGE successfully retrieved: {cpu_info:?}");
 
     cpu_info
 }
@@ -44,6 +44,6 @@ pub fn realtime_cpu(sysinfo_sys: &System) -> Cpu {
     let avg = f64::from(avg) / cpus.len() as f64;
 
     let cpu = Cpu { usage: avg };
-    trace!("REALTIME CPU 获取成功: {cpu:?}");
+    trace!("REALTIME CPU successfully retrieved: {cpu:?}");
     cpu
 }

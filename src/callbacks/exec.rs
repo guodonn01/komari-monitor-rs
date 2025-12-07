@@ -19,19 +19,19 @@ pub struct RemoteExecCallback {
     finished_at: String,
 }
 
-// 直接接收字符串而不是结构体，避免重复解析
+// Receive string directly instead of struct to avoid redundant parsing
 pub async fn exec_command(
     utf8_str: &str,
     callback_url: String,
     ignore_unsafe_cert: &bool,
 ) -> Result<(), String> {
     let remote_exec: RemoteExec =
-        json::from_str(utf8_str).map_err(|_| "无法解析 RemoteExec".to_string())?;
+        json::from_str(utf8_str).map_err(|_| "Failed to parse RemoteExec".to_string())?;
 
     let exec = tokio::spawn(async move {
         let Ok(child) = Command::new("bash")
             .arg("-c")
-            .arg(&remote_exec.command) // 避免克隆
+            .arg(&remote_exec.command) // Avoid cloning
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -48,7 +48,7 @@ pub async fn exec_command(
 
         let status = output.status.code().unwrap_or(1);
 
-        Ok((status, format!("{stdout_str}{stderr_str}"))) // 简化字符串拼接
+        Ok((status, format!("{stdout_str}{stderr_str}"))) // Simplify string concatenation
     });
 
     let Ok(Ok((status, output))) = exec.await else {

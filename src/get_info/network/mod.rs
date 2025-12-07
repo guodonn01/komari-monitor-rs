@@ -30,7 +30,7 @@ pub fn realtime_network(
             total_up: LAST_NETWORK.0,
             total_down: LAST_NETWORK.1,
         };
-        trace!("REALTIME NETWORK 获取成功: {network_info:?}");
+        trace!("REALTIME NETWORK successfully retrieved: {network_info:?}");
         network_info
     }
 }
@@ -50,7 +50,10 @@ pub fn realtime_connections() -> Connections {
         tcp: tcp4 + tcp6,
         udp: udp4 + udp6,
     };
-    trace!("REALTIME CONNECTIONS 获取成功: {:?}", connections);
+    trace!(
+        "REALTIME CONNECTIONS successfully retrieved: {:?}",
+        connections
+    );
     connections
 }
 
@@ -61,7 +64,7 @@ pub fn realtime_connections() -> Connections {
 
     let Ok(sockets_iterator) = iterate_sockets_info_without_pids(proto_flags) else {
         let connections = Connections { tcp: 0, udp: 0 };
-        trace!("REALTIME CONNECTIONS 获取成功: {connections:?}");
+        trace!("REALTIME CONNECTIONS successfully retrieved: {connections:?}");
         return connections;
     };
 
@@ -78,14 +81,17 @@ pub fn realtime_connections() -> Connections {
         tcp: tcp_count,
         udp: udp_count,
     };
-    trace!("REALTIME CONNECTIONS 获取成功: {connections:?}");
+    trace!("REALTIME CONNECTIONS successfully retrieved: {connections:?}");
     connections
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "windows")))]
 pub fn realtime_connections() -> Connections {
     let connections = Connections { tcp: 0, udp: 0 };
-    trace!("REALTIME CONNECTIONS 获取成功: {:?}", connections);
+    trace!(
+        "REALTIME CONNECTIONS successfully retrieved: {:?}",
+        connections
+    );
     connections
 }
 

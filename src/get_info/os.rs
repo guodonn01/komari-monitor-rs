@@ -73,7 +73,7 @@ pub async fn os() -> OsInfo {
         virtualization: virt,
     };
 
-    trace!("OS INFO 获取成功: {os_info:?}");
+    trace!("OS INFO successfully retrieved: {os_info:?}");
 
     os_info
 }

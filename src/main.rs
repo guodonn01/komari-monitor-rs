@@ -45,11 +45,11 @@ async fn main() {
 
     let connection_urls = build_urls(&args.http_server, args.ws_server.as_ref(), &args.token)
         .unwrap_or_else(|e| {
-            error!("无法解析服务器地址: {e}");
+            error!("Failed to parse server address: {e}");
             exit(1);
         });
 
-    info!("成功读取参数: {args:?}");
+    info!("Successfully read arguments: {args:?}");
 
     let (network_saver_tx, mut network_saver_rx): (Sender<(u64, u64)>, Receiver<(u64, u64)>) =
         tokio::sync::mpsc::channel(15);
@@ -59,7 +59,7 @@ async fn main() {
             network_saver(network_saver_tx, &network_config).await;
         });
     } else {
-        info!("已关闭网络统计功能，将不会发送的 网络统计数据");
+        info!("Network statistics feature disabled. Network statistics data will not be sent.");
     }
 
     loop {
@@ -70,7 +70,7 @@ async fn main() {
         )
         .await
         else {
-            error!("无法连接到 Websocket 服务器，5 秒后重新尝试");
+            error!("Failed to connect to WebSocket server, retrying in 5 seconds");
             sleep(Duration::from_secs(5)).await;
             continue;
         };
@@ -132,7 +132,9 @@ async fn main() {
             {
                 let mut write = locked_write.lock().await;
                 if let Err(e) = write.send(Message::Text(Utf8Bytes::from(json))).await {
-                    error!("推送 RealTime 时发生错误，尝试重新连接: {e}");
+                    error!(
+                        "Error occurred while pushing RealTime Info, attempting to reconnect: {e}"
+                    );
                     break;
                 }
             }

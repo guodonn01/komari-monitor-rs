@@ -17,7 +17,7 @@ pub struct BasicInfo {
     pub arch: String,
     pub cpu_cores: u64,
     pub cpu_name: String,
-    pub gpu_name: String, // 暂不支持
+    pub gpu_name: String, // Not supported yet
 
     pub disk_total: u64,
     pub swap_total: u64,
@@ -59,7 +59,7 @@ impl BasicInfo {
             virtualization: os.virtualization,
         };
 
-        debug!("Basic Info 获取成功: {basic_info:?}");
+        debug!("Basic Info successfully retrieved: {basic_info:?}");
 
         basic_info
     }
@@ -78,15 +78,18 @@ impl BasicInfo {
             let resp = match resp {
                 Ok(resp) => resp,
                 Err(e) => {
-                    error!("推送 Basic Info 错误: {e}");
+                    error!("Failed to push Basic Info: {e}");
                     return;
                 }
             };
 
             if resp.status().is_success() {
-                info!("推送 Basic Info 成功");
+                info!("Successfully pushed Basic Info");
             } else {
-                error!("推送 Basic Info 失败，HTTP 状态码: {}", resp.status());
+                error!(
+                    "Failed to push Basic Info, HTTP status code: {}",
+                    resp.status()
+                );
             }
         }
         #[cfg(feature = "nyquest-support")]
@@ -100,15 +103,18 @@ impl BasicInfo {
             let resp = match resp {
                 Ok(resp) => resp,
                 Err(e) => {
-                    error!("推送 Basic Info 错误: {e}");
+                    error!("Failed to push Basic Info: {e}");
                     return;
                 }
             };
 
             if resp.status().is_successful() {
-                info!("推送 Basic Info 成功");
+                info!("Successfully pushed Basic Info");
             } else {
-                error!("推送 Basic Info 失败，HTTP 状态码: {}", resp.status());
+                error!(
+                    "Failed to push Basic Info, HTTP status code: {}",
+                    resp.status()
+                );
             }
         }
     }
@@ -240,7 +246,7 @@ impl RealTimeInfo {
             message: String::new(),
         };
 
-        debug!("实时信息获取成功: {realtime_info:?}");
+        debug!("Real-Time Info successfully retrieved: {realtime_info:?}");
 
         realtime_info
     }

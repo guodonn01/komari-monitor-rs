@@ -9,73 +9,73 @@ use std::{env, fs};
 #[command(
     version,
     long_about = "komari-monitor-rs is a third-party high-performance monitoring agent for the komari monitoring service.",
-    after_long_help = "必须设置 --http-server / --token\n--ip-provider 接受 cloudflare / ipinfo\n--log-level 接受 error, warn, info, debug, trace\n\n本 Agent 开源于 Github , 使用强力的 Rust 驱动, 爱来自 Komari"
+    after_long_help = "Must set --http-server / --token\n--ip-provider accepts cloudflare / ipinfo\n--log-level accepts error, warn, info, debug, trace\n\nThis Agent is open-sourced on Github, powered by powerful Rust. Love from Komari"
 )]
 pub struct Args {
     // Main
-    /// 设置主端 Http 地址
+    /// Set Main Server Http Address
     #[arg(long)]
     pub http_server: String,
 
-    /// 设置主端 WebSocket 地址
+    /// Set Main Server WebSocket Address
     #[arg(long)]
     pub ws_server: Option<String>,
 
-    /// 设置 Token
+    /// Set Token
     #[arg(short, long, allow_hyphen_values = true)]
     pub token: String,
 
-    /// 设置虚假倍率
+    /// Set Fake Multiplier
     #[arg(short, long, default_value_t = 1.0)]
     pub fake: f64,
 
-    /// 启用 TLS (默认关闭)
+    /// Enable TLS (default disabled)
     #[arg(long, default_value_t = false)]
     pub tls: bool,
 
-    /// 忽略证书验证
+    /// Ignore Certificate Verification
     #[arg(long, default_value_t = false)]
     pub ignore_unsafe_cert: bool,
 
-    /// 设置日志等级 (反馈问题请开启 Debug 或者 Trace)
+    /// Set Log Level (Enable Debug or Trace for issue reporting)
     #[arg(long, default_value_t = log_level())]
     pub log_level: LogLevel,
 
     // Other
-    /// 公网 IP 接口
+    /// Public IP Provider
     #[arg(long, default_value_t=ip_provider())]
     pub ip_provider: IpProvider,
 
-    /// 启用 Terminal (默认关闭)
+    /// Enable Terminal (default disabled)
     #[arg(long, default_value_t = false)]
     pub terminal: bool,
 
-    /// 自定义 Terminal 入口
+    /// Custom Terminal Entry
     #[arg(long, default_value_t = terminal_entry())]
     pub terminal_entry: String,
 
-    /// 设置 Real-Time Info 上传间隔时间 (ms)
+    /// Set Real-Time Info Upload Interval (ms)
     #[arg(long, default_value_t = 1000)]
     pub realtime_info_interval: u64,
 
     // Network
-    /// 关闭网络流量统计
+    /// Disable Network Statistics
     #[arg(long, default_value_t = false)]
     pub disable_network_statistics: bool,
 
-    /// 网络流量统计保存时长 (s)
+    /// Network Statistics Duration (s)
     #[arg(long, default_value_t = 864000)]
     pub network_duration: u32,
 
-    /// 网络流量统计间隔 (s)
+    /// Network Statistics Interval (s)
     #[arg(long, default_value_t = 10)]
     pub network_interval: u32,
 
-    /// 网络流量统计保存到磁盘间隔次数 (s)
+    /// Network Statistics Save to Disk Interval Count (s)
     #[arg(long, default_value_t = 10)]
     pub network_interval_number: u32,
 
-    /// 网络统计保存地址
+    /// Network Statistics Save Path
     #[arg(long)]
     pub network_save_path: Option<String>,
 }
@@ -140,7 +140,7 @@ impl Args {
                                 Ok(home) => home,
                                 Err(e) => {
                                     error!(
-                                        "无法自动获取 网络流量信息 文件保存地址，请手动指定: {}",
+                                        "Failed to automatically determine Network Config save path, please specify manually: {}",
                                         e
                                     );
                                     exit(1);
@@ -152,14 +152,17 @@ impl Args {
                                 .to_string_lossy()
                                 .to_string()
                         };
-                        info!("已自动获取 网络流量信息 文件保存地址: {}", path);
+                        info!(
+                            "Automatically determined Network Config save path: {}",
+                            path
+                        );
                         path
                     }
                 } else {
                     let path = PathBuf::from(self.network_save_path.as_ref().unwrap())
                         .to_string_lossy()
                         .to_string();
-                    info!("已获取 网络流量信息 文件保存地址: {}", path);
+                    info!("Using specified Network Config save path: {}", path);
                     path
                 }
             },

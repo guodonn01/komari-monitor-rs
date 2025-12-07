@@ -26,7 +26,7 @@ pub fn mem_info_without_usage(sysinfo_sys: &System) -> MemDiskTotalInfoWithOutUs
         disk: all_disk_space,
     };
 
-    trace!("MEM DISK INFO WITH OUT USAGE 获取成功: {info:?}");
+    trace!("MEM DISK INFO WITH OUT USAGE successfully retrieved: {info:?}");
 
     info
 }
@@ -35,7 +35,7 @@ pub fn realtime_mem(sysinfo_sys: &System) -> Ram {
     let ram = Ram {
         used: sysinfo_sys.total_memory() - sysinfo_sys.available_memory(),
     };
-    trace!("REALTIME MEM 获取成功: {ram:?}");
+    trace!("REALTIME MEM successfully retrieved: {ram:?}");
     ram
 }
 
@@ -43,7 +43,7 @@ pub fn realtime_swap(sysinfo_sys: &System) -> Swap {
     let swap = Swap {
         used: sysinfo_sys.used_swap(),
     };
-    trace!("REALTIME SWAP 获取成功: {swap:?}");
+    trace!("REALTIME SWAP successfully retrieved: {swap:?}");
     swap
 }
 
@@ -51,12 +51,12 @@ pub fn realtime_disk(disk: &Disks) -> Disk {
     let mut used_disk: u64 = 0;
     let disk_list = filter_disks(disk);
     for disk in disk_list {
-        trace!("FILTER DISK: {disk:?}");
+        trace!("FILTERED DISK: {disk:?}");
         used_disk += disk.total_space() - disk.available_space();
     }
 
     let disk_info = Disk { used: used_disk };
-    trace!("REALTIME DISK 获取成功: {disk_info:?}");
+    trace!("REALTIME DISK successfully retrieved: {disk_info:?}");
     disk_info
 }
 
@@ -81,7 +81,7 @@ pub fn filter_disks(disks: &Disks) -> Vec<&sysinfo::Disk> {
     ];
 
     let filtered_fs: Vec<&sysinfo::Disk> = disks
-        .iter() // 返回 &Disk
+        .iter() // Returns &Disk
         .filter(|disk| {
             let fs = disk.file_system().to_string_lossy();
             allowed_fs.contains(&fs.as_ref())

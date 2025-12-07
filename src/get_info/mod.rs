@@ -11,7 +11,7 @@ pub mod os;
 
 pub fn realtime_uptime() -> u64 {
     let uptime = System::uptime();
-    trace!("REALTIME UPTIME 获取成功: {uptime}");
+    trace!("REALTIME UPTIME successfully retrieved: {uptime}");
     uptime
 }
 
@@ -19,7 +19,7 @@ pub fn realtime_process() -> u64 {
     let mut process_count = 0;
 
     let Ok(entries) = fs::read_dir("/proc") else {
-        trace!("REALTIME PROCESS 获取失败: 无法读取 /proc 目录");
+        trace!("REALTIME PROCESS failed: Cannot read /proc directory");
         return 0;
     };
 
@@ -33,6 +33,6 @@ pub fn realtime_process() -> u64 {
     }
 
     let process_count = process_count as u64;
-    trace!("REALTIME PROCESS 获取成功: {process_count}");
+    trace!("REALTIME PROCESS successfully retrieved: {process_count}");
     process_count
 }
