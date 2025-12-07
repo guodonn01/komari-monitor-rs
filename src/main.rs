@@ -11,19 +11,23 @@
 use crate::callbacks::handle_callbacks;
 use crate::command_parser::Args;
 use crate::data_struct::{BasicInfo, RealTimeInfo};
-use crate::utils::{build_urls, connect_ws, init_logger};
+use crate::get_info::network::network_saver::network_saver;
+use crate::utils::{ConnectionUrls, build_urls, connect_ws, init_logger};
 use futures::stream::SplitSink;
 use futures::{SinkExt, StreamExt};
 use log::{error, info};
 use miniserde::json;
+use std::process::exit;
 use std::sync::Arc;
 use std::time::Duration;
 use sysinfo::{CpuRefreshKind, DiskRefreshKind, Disks, MemoryRefreshKind, Networks, RefreshKind};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
+use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::sleep;
 use tokio_tungstenite::tungstenite::{Message, Utf8Bytes};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
+use url::ParseError;
 
 mod callbacks;
 mod command_parser;
@@ -38,22 +42,26 @@ async fn main() {
 
     init_logger(&args.log_level);
 
-    #[cfg(all(feature = "nyquest-support", not(target_os = "linux")))]
-    {
-        nyquest_preset::register();
-        info!("komari-monitor-rs 正在使用 Nyquest 作为 Http Client，该功能暂未稳定，请谨慎使用");
-    }
+    let network_config = args.network_config();
 
-    #[cfg(all(feature = "nyquest-support", target_os = "linux"))]
-    {
-        nyquest_backend_curl::register();
-        info!("komari-monitor-rs 正在使用 Nyquest 作为 Http Client，该功能暂未稳定，请谨慎使用");
-    }
-
-    let connection_urls =
-        build_urls(&args.http_server, args.ws_server.as_ref(), &args.token).unwrap();
+    let connection_urls = build_urls(&args.http_server, args.ws_server.as_ref(), &args.token)
+        .unwrap_or_else(|e| {
+            error!("无法解析服务器地址: {e}");
+            exit(1);
+        });
 
     info!("成功读取参数: {args:?}");
+
+    let (network_saver_tx, mut network_saver_rx): (Sender<(u64, u64)>, Receiver<(u64, u64)>) =
+        tokio::sync::mpsc::channel(15);
+
+    if !network_config.disable_network_statistics {
+        let _listener = tokio::spawn(async move {
+            network_saver(network_saver_tx, &network_config).await;
+        });
+    } else {
+        info!("已关闭网络统计功能，将不会发送的 网络统计数据");
+    }
 
     loop {
         let Ok(ws_stream) = connect_ws(
@@ -113,7 +121,13 @@ async fn main() {
             );
             networks.refresh(true);
             disks.refresh_specifics(true, DiskRefreshKind::nothing().with_storage());
-            let real_time = RealTimeInfo::build(&sysinfo_sys, &networks, &disks, args.fake);
+            let real_time = RealTimeInfo::build(
+                &sysinfo_sys,
+                &networks,
+                &mut network_saver_rx,
+                &disks,
+                args.fake,
+            );
 
             let json = json::to_string(&real_time);
             {

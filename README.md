@@ -10,20 +10,22 @@ Agent
 
 致力于实现[原版 Agent](https://github.com/komari-monitor/komari-agent) 的所有功能，并拓展更多功能
 
+## 近期更新
+
+已支持周期流量统计 / 清零
+
+相关参数:
+- `--disable-network-statistics`: 禁用周期流量统计，上报的总流量为 0，默认关闭
+- `--network-duration`: 周期流量统计 的统计长度，单位 sec，默认 864000 (10 Days)
+- `--network-interval`: 周期流量统计 的间隔长度，单位 sec，默认 10
+- `--network-interval-number`: 周期流量统计 的保存到磁盘间隔次数，默认 10 (该参数意义为 `硬盘读写间隔时间 = 间隔长度 \* 间隔次数`，默认值为 10 * 10 = 100sec 写入一次硬盘)
+- `--network-save-path`: 周期流量统计 的文件保存地址，在 Windows 下默认为 `C:\komari-network.conf`，非 Windows 默认为 `/etc/komari-network.conf` (root) 或 `$HOME/.config/komari-network.conf` (非 root)
+
+该功能暂未稳定，有问题请及时反馈
+
 ## 一键脚本
 
-- 交互模式
-
-  ```bash
-  wget -O setup-client-rs.sh "https://ghfast.top/https://raw.githubusercontent.com/GenshinMinecraft/komari-monitor-rs/refs/heads/main/install.sh" && chmod +x setup-client-rs.sh && bash ./setup-client-rs.sh
-  ```
-
-- 直接传入参数
-
-  ```bash
-  wget -O setup-client-rs.sh "https://ghfast.top/https://raw.githubusercontent.com/GenshinMinecraft/komari-monitor-rs/refs/heads/main/install.sh" && chmod +x setup-client-rs.sh
-  bash setup-client-rs.sh --http-server "http://your.server:port" --ws-server "ws://your.server:port" --token "your_token"
-  ```
+**本脚本已不再支持，该项目不面向小白用户，请自行配置**
 
 ## 与原版的差异
 
@@ -50,8 +52,8 @@ Agent
 除此之外，还有希望添加的功能:
 
 - 自动更新
-- 自动安装
-- Bash / PWSH 一键脚本
+- ~~自动安装~~
+- ~~Bash / PWSH 一键脚本~~
 
 ## 下载
 
@@ -64,40 +66,76 @@ Agent
 ## Usage
 
 ```
-Komari Monitor Agent in Rust
+komari-monitor-rs is a third-party high-performance monitoring agent for the komari monitoring service.
 
-Usage: komari-monitor-rs [OPTIONS] --http-server <HTTP_SERVER> --token <TOKEN>
+Usage: komari-monitor-rs.exe --http-server <HTTP_SERVER> --token <TOKEN> [OPTIONS]
 
 Options:
       --http-server <HTTP_SERVER>
           设置主端 Http 地址
+
       --ws-server <WS_SERVER>
           设置主端 WebSocket 地址
+
   -t, --token <TOKEN>
           设置 Token
-      --ip-provider <IP_PROVIDER>
-          公网 IP 接口 [default: ipinfo] [possible values: cloudflare, ipinfo]
-      --terminal
-          启用 Terminal (默认关闭)
-      --terminal-entry <TERMINAL_ENTRY>
-          自定义 Terminal 入口 [default: default]
+
   -f, --fake <FAKE>
-          设置虚假倍率 [default: 1]
-      --realtime-info-interval <REALTIME_INFO_INTERVAL>
-          设置 Real-Time Info 上传间隔时间 (ms) [default: 1000]
+          设置虚假倍率
+          [default: 1]
+
       --tls
           启用 TLS (默认关闭)
+          [default: false]
+
       --ignore-unsafe-cert
           忽略证书验证
+          [default: false]
+
       --log-level <LOG_LEVEL>
-          设置日志等级 (反馈问题请开启 Debug 或者 Trace) [default: info] [possible values: error, warn, info, debug, trace]
-  -h, --help
-          Print help
-  -V, --version
-          Print version
+          设置日志等级 (反馈问题请开启 Debug 或者 Trace)
+          [default: info]
+
+      --ip-provider <IP_PROVIDER>
+          公网 IP 接口
+          [default: ipinfo]
+
+      --terminal
+          启用 Terminal (默认关闭)
+          [default: false]
+
+      --terminal-entry <TERMINAL_ENTRY>
+          自定义 Terminal 入口
+          [default: default]
+
+      --realtime-info-interval <REALTIME_INFO_INTERVAL>
+          设置 Real-Time Info 上传间隔时间 (ms)
+          [default: 1000]
+
+      --network-statistics
+          启用网络流量统计
+          [default: true]
+
+      --network-duration <NETWORK_DURATION>
+          网络流量统计保存时长 (s)
+          [default: 864000]
+
+      --network-interval <NETWORK_INTERVAL>
+          网络流量统计间隔 (s)
+          [default: 10]
+
+      --network-interval-number <NETWORK_INTERVAL_NUMBER>
+          网络流量统计保存到磁盘间隔次数 (s)
+          [default: 10]
+
+      --network-save-path <NETWORK_SAVE_PATH>
+          网络统计保存地址
 ```
 
-**必须设置 `--http-server` / `--token`**
+
+必须设置 `--http-server` / `--token`
+`--ip-provider` 接受 `cloudflare` / `ipinfo`
+`--log-level` 接受 `error`, `warn`, `info`, `debug`, `trace`
 
 ## Nix 安装
 

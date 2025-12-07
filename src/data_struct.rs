@@ -10,6 +10,7 @@ use crate::get_info::{realtime_process, realtime_uptime};
 use log::{debug, error, info};
 use miniserde::{Deserialize, Serialize};
 use sysinfo::{Disks, Networks};
+use tokio::sync::mpsc::Receiver;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BasicInfo {
@@ -175,6 +176,7 @@ impl RealTimeInfo {
     pub fn build(
         sysinfo_sys: &sysinfo::System,
         network: &Networks,
+        network_saver_rx: &mut Receiver<(u64, u64)>,
         disk: &Disks,
         fake: f64,
     ) -> Self {
@@ -194,7 +196,7 @@ impl RealTimeInfo {
         let fake_load5 = load.load5 * fake;
         let fake_load15 = load.load15 * fake;
 
-        let network_info = realtime_network(network);
+        let network_info = realtime_network(network, network_saver_rx);
         let fake_network_up = (network_info.up as f64 * fake) as u64;
         let fake_network_down = (network_info.down as f64 * fake) as u64;
         let fake_network_total_up = (network_info.total_up as f64 * fake) as u64;

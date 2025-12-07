@@ -1,45 +1,34 @@
 use crate::data_struct::{Connections, Network};
 use log::trace;
+use std::collections::HashSet;
 use sysinfo::Networks;
+use tokio::sync::mpsc::Receiver;
+
 #[cfg(target_os = "linux")]
 mod netlink;
+pub mod network_saver;
+
+static mut LAST_NETWORK: (u64, u64) = (0, 0);
 
 pub static mut DURATION: f64 = 0.0;
-pub fn realtime_network(network: &Networks) -> Network {
-    let mut total_up = 0;
-    let mut total_down = 0;
-    let mut up = 0;
-    let mut down = 0;
+pub fn realtime_network(
+    network: &Networks,
+    network_saver_rx: &mut Receiver<(u64, u64)>,
+) -> Network {
+    let (up, down, _, _) = filter_network(network);
 
-    for (name, data) in network {
-        if name.contains("br")
-            || name.contains("cni")
-            || name.contains("docker")
-            || name.contains("podman")
-            || name.contains("flannel")
-            || name.contains("lo")
-            || name.contains("veth")
-            || name.contains("virbr")
-            || name.contains("vmbr")
-            || name.contains("tap")
-            || name.contains("tun")
-            || name.contains("fwln")
-            || name.contains("fwpr")
-        {
-            continue;
+    if let Ok(network_saver_rx) = network_saver_rx.try_recv() {
+        unsafe {
+            LAST_NETWORK = (network_saver_rx.0, network_saver_rx.1);
         }
-        total_up += data.total_transmitted();
-        total_down += data.total_received();
-        up += data.transmitted();
-        down += data.received();
     }
 
     unsafe {
         let network_info = Network {
             up: (up as f64 / (DURATION / 1000.0)) as u64,
             down: (down as f64 / (DURATION / 1000.0)) as u64,
-            total_up,
-            total_down,
+            total_up: LAST_NETWORK.0,
+            total_down: LAST_NETWORK.1,
         };
         trace!("REALTIME NETWORK 获取成功: {network_info:?}");
         network_info
@@ -98,4 +87,36 @@ pub fn realtime_connections() -> Connections {
     let connections = Connections { tcp: 0, udp: 0 };
     trace!("REALTIME CONNECTIONS 获取成功: {:?}", connections);
     connections
+}
+
+pub fn filter_network(network: &Networks) -> (u64, u64, u64, u64) {
+    let mut total_up = 0;
+    let mut total_down = 0;
+    let mut up = 0;
+    let mut down = 0;
+
+    let filter_keywords: HashSet<&str> = [
+        "br", "cni", "docker", "podman", "flannel", "lo", "veth", "virbr", "vmbr", "tap", "tun",
+        "fwln", "fwpr",
+    ]
+    .iter()
+    .cloned()
+    .collect();
+
+    for (name, data) in network {
+        let should_filter = filter_keywords
+            .iter()
+            .any(|&keyword| name.contains(keyword));
+
+        if should_filter {
+            continue;
+        }
+
+        total_up += data.total_transmitted();
+        total_down += data.total_received();
+        up += data.transmitted();
+        down += data.received();
+    }
+
+    (up, down, total_up, total_down)
 }
