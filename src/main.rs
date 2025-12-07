@@ -12,7 +12,7 @@ use crate::callbacks::handle_callbacks;
 use crate::command_parser::Args;
 use crate::data_struct::{BasicInfo, RealTimeInfo};
 use crate::get_info::network::network_saver::network_saver;
-use crate::utils::{ConnectionUrls, build_urls, connect_ws, init_logger};
+use crate::utils::{build_urls, connect_ws, init_logger};
 use futures::stream::SplitSink;
 use futures::{SinkExt, StreamExt};
 use log::{error, info};
@@ -27,7 +27,6 @@ use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::sleep;
 use tokio_tungstenite::tungstenite::{Message, Utf8Bytes};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
-use url::ParseError;
 
 mod callbacks;
 mod command_parser;

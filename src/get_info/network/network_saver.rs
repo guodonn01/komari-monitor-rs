@@ -8,7 +8,7 @@ use std::process::exit;
 use std::str::FromStr;
 use std::time::Duration;
 use sysinfo::Networks;
-use tokio::fs::{File, OpenOptions, read_to_string};
+use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
 #[derive(Serialize, Deserialize, PartialEq)]
@@ -222,7 +222,7 @@ async fn get_or_init_latest_network_info(network_config: &NetworkConfig) -> (Fil
 }
 
 pub async fn network_saver(
-    mut tx: tokio::sync::mpsc::Sender<(u64, u64)>,
+    tx: tokio::sync::mpsc::Sender<(u64, u64)>,
     network_config: &NetworkConfig,
 ) {
     if network_config.disable_network_statistics {
