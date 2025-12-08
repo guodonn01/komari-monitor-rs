@@ -1,6 +1,6 @@
 [package]
 name = "komari-monitor-rs"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2024"
 authors = ["GenshinMinecrat <gm@highp.ing>"]
 description = "Komari Monitor Agent in Rust"
@@ -40,9 +40,13 @@ nyquest-backend-curl = { version = "0.3.1", default-features = false, features =
 curl = { version = "0.4.49", default-features = false, optional = true }
 rustls-ffi = { version = "0.15.0", default-features = false, features = ["ring"], optional = true }
 
+[target.'cfg(target_os = "windows")'.build-dependencies]
+thunk-rs = { version = "0.3.5", features = ["xp"], default-features = false, optional = true }
+
 [features]
 ureq-support = ["ureq"]
 nyquest-support = ["nyquest", "nyquest-backend-curl", "curl", "nyquest-preset", "rustls-ffi"]
+winxp-support = ["thunk-rs"]
 
 # Default Dev Profile
 [profile.dev]

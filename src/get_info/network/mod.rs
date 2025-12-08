@@ -114,7 +114,7 @@ pub fn filter_network(network: &Networks) -> (u64, u64, u64, u64) {
             .iter()
             .any(|&keyword| name.contains(keyword));
 
-        if should_filter {
+        if should_filter || data.mac_address().0 == [0, 0, 0, 0, 0, 0] {
             continue;
         }
 

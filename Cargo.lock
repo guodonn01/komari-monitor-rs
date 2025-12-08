@@ -847,7 +847,7 @@ checksum = "8eaf4bc02d17cbdd7ff4c7438cafcdf7fb9a4613313ad11b4f8fefe7d3fa0130"
 
 [[package]]
 name = "komari-monitor-rs"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "curl",
  "futures",
@@ -868,6 +868,7 @@ dependencies = [
  "rustls-pki-types",
  "simple_logger",
  "sysinfo",
+ "thunk-rs",
  "time",
  "tokio",
  "tokio-tungstenite",
@@ -2057,6 +2058,12 @@ dependencies = [
  "quote",
  "syn 2.0.109",
 ]
+
+[[package]]
+name = "thunk-rs"
+version = "0.3.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b4c52c965c79d34af24f3c3a891c4a1441c9ae20e7465607c20ecf3a544d0e1"
 
 [[package]]
 name = "time"

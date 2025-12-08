@@ -15,7 +15,7 @@ pub struct Args {
     // Main
     /// Set Main Server Http Address
     #[arg(long)]
-    pub http_server: String,
+    pub http_server: Option<String>,
 
     /// Set Main Server WebSocket Address
     #[arg(long)]
@@ -23,7 +23,7 @@ pub struct Args {
 
     /// Set Token
     #[arg(short, long, allow_hyphen_values = true)]
-    pub token: String,
+    pub token: Option<String>,
 
     /// Set Fake Multiplier
     #[arg(short, long, default_value_t = 1.0)]
@@ -36,6 +36,10 @@ pub struct Args {
     /// Ignore Certificate Verification
     #[arg(long, default_value_t = false)]
     pub ignore_unsafe_cert: bool,
+
+    /// Dry Run
+    #[arg(short, long, default_value_t = false)]
+    pub dry_run: bool,
 
     /// Set Log Level (Enable Debug or Trace for issue reporting)
     #[arg(long, default_value_t = log_level())]

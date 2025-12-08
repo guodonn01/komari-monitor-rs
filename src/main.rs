@@ -27,6 +27,7 @@ use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::sleep;
 use tokio_tungstenite::tungstenite::{Message, Utf8Bytes};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
+use crate::dry_run::dry_run;
 
 mod callbacks;
 mod command_parser;
@@ -34,6 +35,7 @@ mod data_struct;
 mod get_info;
 mod rustls_config;
 mod utils;
+mod dry_run;
 
 #[tokio::main]
 async fn main() {
@@ -41,9 +43,23 @@ async fn main() {
 
     init_logger(&args.log_level);
 
+    dry_run().await;
+
+    if args.dry_run {
+        exit(0);
+    }
+
     let network_config = args.network_config();
 
-    let connection_urls = build_urls(&args.http_server, args.ws_server.as_ref(), &args.token)
+    let (http_server, token) = match (args.http_server.clone(), args.token.clone()) {
+        (Some(http_server), Some(token)) => (http_server, token),
+        (_, _) => {
+            error!("The `--http-server` and `--token` parameters must be specified.");
+            exit(1);
+        }
+    };
+
+    let connection_urls = build_urls(http_server.as_ref(), args.ws_server.as_ref(), token.as_ref())
         .unwrap_or_else(|e| {
             error!("Failed to parse server address: {e}");
             exit(1);
