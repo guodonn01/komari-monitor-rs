@@ -391,7 +391,7 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: windows
+          name: windows-old-x86
           path: target/i686-pc-windows-msvc/minimal/komari-monitor-rs-old-x86.exe
       - name: Publish to GitHub Release
         uses: softprops/action-gh-release@v1
@@ -414,7 +414,7 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: windows-nyquest
+          name: windows-old-x86-nyquest
           path: target/i686-pc-windows-msvc/minimal/komari-monitor-rs-old-x86-nyquest.exe
       - name: Publish to GitHub Release
         uses: softprops/action-gh-release@v1
@@ -444,7 +444,7 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: windows
+          name: windows-old-x64
           path: target/x86_64-pc-windows-msvc/minimal/komari-monitor-rs-old-x64.exe
       - name: Publish to GitHub Release
         uses: softprops/action-gh-release@v1
@@ -467,7 +467,7 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: windows-nyquest
+          name: windows-old-x64-nyquest
           path: target/x86_64-pc-windows-msvc/minimal/komari-monitor-rs-old-x64-nyquest.exe
       - name: Publish to GitHub Release
         uses: softprops/action-gh-release@v1
