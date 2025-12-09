@@ -269,59 +269,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  macos-amd64-release:
-    runs-on: macos-13
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-      - name: Install Rust Toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-      - name: Cargo Build
-        run: cargo clean && cargo build --profile minimal --features ureq-support
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-amd64
-          path: target/minimal/komari-monitor-rs
-      - name: Rename Binary
-        run: mv target/minimal/komari-monitor-rs target/minimal/komari-monitor-rs-macos-amd64
-      - name: Publish to GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            target/minimal/komari-monitor-rs-macos-amd64
-          tag_name: latest # 使用固定的标签名称作为发布版本号
-          body: |
-            Note: All Release operations will publish the Binary and software packages here
-            Latest release for Commit: ${{ github.sha }}
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Cargo Build nyquest
-        run: cargo clean && cargo build --profile minimal --features nyquest-support
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-amd64-nyquest
-          path: target/minimal/komari-monitor-rs
-      - name: Rename Binary
-        run: mv target/minimal/komari-monitor-rs target/minimal/komari-monitor-rs-macos-amd64-nyquest
-      - name: Publish to GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            target/minimal/komari-monitor-rs-macos-amd64-nyquest
-          tag_name: latest # 使用固定的标签名称作为发布版本号
-          body: |
-            Note: All Release operations will publish the Binary and software packages here
-            Latest release for Commit: ${{ github.sha }}
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   macos-arm64-release:
     runs-on: macos-latest
     steps:

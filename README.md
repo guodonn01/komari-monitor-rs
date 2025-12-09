@@ -12,7 +12,28 @@ Agent
 
 ## 近期更新
 
-已支持周期流量统计 / 清零
+### Dry Run 支持
+
+现在可以不提供任何参数，仅提供 `--dry-run` 参数，以事先获取监控数据
+
+每次正常运行前也将获取一次数据，若有误监控的项目请发送 DryRun 的输出到 Issue 中，比如各种不应该读取的硬盘、虚拟网卡等
+
+```
+The following is the equipment that will be put into operation and monitored:
+CPU: AMD EPYC 7763 64-Core Processor, Cores: 4
+Memory: 2092 MB / 16773 MB
+Swap: 0 MB / 0 MB
+Load: 0.36 / 0.65 / 0.37
+
+Hard drives will be monitored:
+/dev/root | ext4 | /usr/sbin/docker-init | 8 GB / 31 GB
+
+Network interfaces will be monitored:
+eth0 | 00:22:48:58:ca:62 | UP: 0 GB / DOWN: 7 GB
+CONNS: TCP: 12 | UDP: 4
+```
+
+### 已支持周期流量统计 / 清零
 
 相关参数:
 

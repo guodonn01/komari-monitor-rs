@@ -10,7 +10,7 @@ pub async fn dry_run() {
     info!("The following is the equipment that will be put into operation and monitored:");
     let mut sysinfo_sys = sysinfo::System::new();
     let networks = Networks::new_with_refreshed_list();
-    let disks = Disks::new();
+    let disks = Disks::new_with_refreshed_list();
     sysinfo_sys.refresh_all();
 
     let cpu = cpu_info_without_usage(&sysinfo_sys);
