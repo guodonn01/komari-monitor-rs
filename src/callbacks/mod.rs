@@ -18,11 +18,14 @@ struct Msg {
     message: String,
 }
 
+type Reader = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
+type LockedWriter = Arc<Mutex<SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>>>;
+
 pub async fn handle_callbacks(
     _args: &Args,
     _connection_urls: &ConnectionUrls,
-    reader: &mut SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
-    locked_writer: &Arc<Mutex<SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>>>,
+    reader: &mut Reader,
+    locked_writer: &LockedWriter,
 ) -> () {
     while let Some(msg) = reader.next().await {
         let Ok(msg) = msg else {
@@ -33,7 +36,7 @@ pub async fn handle_callbacks(
             continue;
         };
 
-        info!("主端传入信息: {}", utf8.as_str());
+        info!("Received message from main server: {}", utf8.as_str());
 
         let json: Msg = if let Ok(value) = json::from_str(utf8.as_str()) {
             value
@@ -50,12 +53,14 @@ pub async fn handle_callbacks(
                     match ping_target(&utf8_cloned).await {
                         Ok(json_res) => {
                             let mut write = locked_write_for_ping.lock().await;
-                            info!("Ping Success: {}", json::to_string(&json_res));
+                            info!("Ping successful: {}", json::to_string(&json_res));
                             if let Err(e) = write
                                 .send(Message::Text(Utf8Bytes::from(json::to_string(&json_res))))
                                 .await
                             {
-                                error!("推送 ping result 时发生错误，尝试重新连接: {e}");
+                                error!(
+                                    "Error occurred while pushing ping result, attempting to reconnect: {e}"
+                                );
                             }
                         }
                         Err(err) => {

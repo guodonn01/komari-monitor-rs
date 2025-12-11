@@ -25,21 +25,20 @@ pub fn init_logger(log_level: &LogLevel) {
 
 #[derive(Debug, Clone)]
 pub struct ConnectionUrls {
-    pub basic_info_url: String,
-    pub _exec_callback_url: String,
-    pub ws_real_time_url: String,
+    pub basic_info: String,
+    pub ws_real_time: String,
 }
 
 pub fn build_urls(
     http_server: &str,
-    ws_server: &Option<String>,
+    ws_server: Option<&String>,
     token: &str,
 ) -> Result<ConnectionUrls, ParseError> {
-    // 1. 构造 http_url_base
+    // 1. Construct http_url_base
     let http_url = Url::parse(http_server)?;
     let http_url_base = http_url.as_str().trim_end_matches('/');
 
-    // 2. 构造 ws_url_base
+    // 2. Construct ws_url_base
     let ws_url = if let Some(ws) = ws_server {
         Url::parse(ws)?
     } else {
@@ -47,24 +46,22 @@ pub fn build_urls(
         match ws_url.scheme() {
             "http" => ws_url.set_scheme("ws").unwrap(),
             "https" => ws_url.set_scheme("wss").unwrap(),
-            other => panic!("不支持的 scheme: {other}"),
+            other => panic!("Unsupported scheme: {other}"),
         }
         ws_url
     };
     let ws_url_base = ws_url.as_str().trim_end_matches('/').to_string();
 
-    // 3. 构造各个最终 URL
+    // 3. Construct final URLs
     let basic_info_url = format!("{http_url_base}/api/clients/uploadBasicInfo?token={token}");
-    let exec_callback_url = format!("{http_url_base}/api/clients/task/result?token={token}");
     let ws_real_time_url = format!("{ws_url_base}/api/clients/report?token={token}");
 
     let connection_urls = ConnectionUrls {
-        basic_info_url,
-        _exec_callback_url: exec_callback_url,
-        ws_real_time_url,
+        basic_info: basic_info_url,
+        ws_real_time: ws_real_time_url,
     };
 
-    info!("URL 解析成功: {connection_urls:?}");
+    info!("URL parsing successful: {connection_urls:?}");
 
     Ok(connection_urls)
 }
@@ -88,24 +85,49 @@ pub async fn connect_ws(
                 ),
             )
             .await
-            .map_err(|_| "WebSocket 连接超时".to_string())?
+            .map_err(|_| "WebSocket connection timeout".to_string())?
             .map(|ws| ws.0)
-            .map_err(|_| "无法创立 WebSocket 连接".to_string())
+            .map_err(|_| "Failed to establish WebSocket connection".to_string())
         } else {
             timeout(
                 connection_timeout,
                 connect_async_tls_with_config(url, None, false, None),
             )
             .await
-            .map_err(|_| "WebSocket 连接超时".to_string())?
+            .map_err(|_| "WebSocket connection timeout".to_string())?
             .map(|ws| ws.0)
-            .map_err(|_| "无法创立 WebSocket 连接".into())
+            .map_err(|_| "Failed to establish WebSocket connection".into())
         }
     } else {
         timeout(connection_timeout, connect_async(url))
             .await
-            .map_err(|_| "WebSocket 连接超时".to_string())?
+            .map_err(|_| "WebSocket connection timeout".to_string())?
             .map(|ws| ws.0)
-            .map_err(|_| "无法创立 WebSocket 连接".to_string())
+            .map_err(|_| "Failed to establish WebSocket connection".to_string())
     }
+}
+
+#[cfg(feature = "ureq-support")]
+pub fn create_ureq_agent(disable_verification: bool) -> ureq::Agent {
+    let config = ureq::Agent::config_builder()
+        .tls_config(
+            ureq::tls::TlsConfig::builder()
+                .disable_verification(disable_verification)
+                .build(),
+        )
+        .timeout_global(Some(Duration::from_secs(5)))
+        .build();
+    config.new_agent()
+}
+
+#[cfg(feature = "nyquest-support")]
+pub fn create_nyquest_client(disable_verification: bool) -> nyquest::BlockingClient {
+    use std::time::Duration;
+    let mut client = nyquest::ClientBuilder::default()
+        .request_timeout(Duration::from_secs(5))
+        .user_agent("curl/8.7.1");
+    if disable_verification {
+        client = client.dangerously_ignore_certificate_errors();
+    }
+    client.build_blocking().unwrap()
 }

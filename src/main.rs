@@ -1,31 +1,41 @@
 #![warn(clippy::all, clippy::pedantic)]
+#![allow(
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::similar_names,
+    clippy::too_many_lines
+)]
 
 use crate::callbacks::handle_callbacks;
 use crate::command_parser::Args;
 use crate::data_struct::{BasicInfo, RealTimeInfo};
+use crate::get_info::network::network_saver::network_saver;
 use crate::utils::{build_urls, connect_ws, init_logger};
-use futures::stream::{SplitSink, SplitStream};
+use futures::stream::SplitSink;
 use futures::{SinkExt, StreamExt};
 use log::{error, info};
 use miniserde::json;
+use std::process::exit;
 use std::sync::Arc;
 use std::time::Duration;
 use sysinfo::{CpuRefreshKind, DiskRefreshKind, Disks, MemoryRefreshKind, Networks, RefreshKind};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
+use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::sleep;
 use tokio_tungstenite::tungstenite::{Message, Utf8Bytes};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
-
-mod command_parser;
-mod data_struct;
-mod rustls_config;
+use crate::dry_run::dry_run;
 
 mod callbacks;
+mod command_parser;
+mod data_struct;
 mod get_info;
-#[cfg(target_os = "linux")]
-mod netlink;
+mod rustls_config;
 mod utils;
+mod dry_run;
 
 #[tokio::main]
 async fn main() {
@@ -33,27 +43,55 @@ async fn main() {
 
     init_logger(&args.log_level);
 
-    let connection_urls = build_urls(&args.http_server, &args.ws_server, &args.token).unwrap();
+    dry_run().await;
 
-    info!("成功读取参数: {args:?}");
+    if args.dry_run {
+        exit(0);
+    }
+
+    let network_config = args.network_config();
+
+    let (http_server, token) = match (args.http_server.clone(), args.token.clone()) {
+        (Some(http_server), Some(token)) => (http_server, token),
+        (_, _) => {
+            error!("The `--http-server` and `--token` parameters must be specified.");
+            exit(1);
+        }
+    };
+
+    let connection_urls = build_urls(http_server.as_ref(), args.ws_server.as_ref(), token.as_ref())
+        .unwrap_or_else(|e| {
+            error!("Failed to parse server address: {e}");
+            exit(1);
+        });
+
+    info!("Successfully read arguments: {args:?}");
+
+    let (network_saver_tx, mut network_saver_rx): (Sender<(u64, u64)>, Receiver<(u64, u64)>) =
+        tokio::sync::mpsc::channel(15);
+
+    if !network_config.disable_network_statistics {
+        let _listener = tokio::spawn(async move {
+            network_saver(network_saver_tx, &network_config).await;
+        });
+    } else {
+        info!("Network statistics feature disabled. Network statistics data will not be sent.");
+    }
 
     loop {
         let Ok(ws_stream) = connect_ws(
-            &connection_urls.ws_real_time_url,
+            &connection_urls.ws_real_time,
             args.tls,
             args.ignore_unsafe_cert,
         )
         .await
         else {
-            eprintln!("无法连接到 Websocket 服务器，5 秒后重新尝试");
+            error!("Failed to connect to WebSocket server, retrying in 5 seconds");
             sleep(Duration::from_secs(5)).await;
             continue;
         };
 
-        let (write, mut read): (
-            SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
-            SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
-        ) = ws_stream.split();
+        let (write, mut read) = ws_stream.split();
 
         let locked_write: Arc<
             Mutex<SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>>,
@@ -87,9 +125,7 @@ async fn main() {
 
         let basic_info = BasicInfo::build(&sysinfo_sys, args.fake, &args.ip_provider).await;
 
-        basic_info
-            .push(&connection_urls.basic_info_url, args.ignore_unsafe_cert)
-            .await;
+        basic_info.push(connection_urls.basic_info.clone(), args.ignore_unsafe_cert);
 
         loop {
             let start_time = tokio::time::Instant::now();
@@ -100,13 +136,21 @@ async fn main() {
             );
             networks.refresh(true);
             disks.refresh_specifics(true, DiskRefreshKind::nothing().with_storage());
-            let real_time = RealTimeInfo::build(&sysinfo_sys, &networks, &disks, args.fake);
+            let real_time = RealTimeInfo::build(
+                &sysinfo_sys,
+                &networks,
+                &mut network_saver_rx,
+                &disks,
+                args.fake,
+            );
 
             let json = json::to_string(&real_time);
             {
                 let mut write = locked_write.lock().await;
                 if let Err(e) = write.send(Message::Text(Utf8Bytes::from(json))).await {
-                    error!("推送 RealTime 时发生错误，尝试重新连接: {e}");
+                    error!(
+                        "Error occurred while pushing RealTime Info, attempting to reconnect: {e}"
+                    );
                     break;
                 }
             }
