@@ -131,26 +131,27 @@ impl NetworkInfo {
     }
 }
 
-async fn get_or_init_latest_network_info(network_config: &NetworkConfig) -> (File, NetworkInfo) {
-    let mut file = OpenOptions::new()
+async fn get_or_init_latest_network_info(
+    network_config: &NetworkConfig,
+) -> Result<(File, NetworkInfo), String> {
+    let mut file = match OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
         .truncate(false)
         .open(&network_config.network_save_path)
         .await
-        .unwrap_or_else(|e| {
-            error!("Failed to open network traffic info file, please check permissions: {e}");
-            exit(1);
-        });
+    {
+        Ok(file) => file,
+        Err(e) => {
+            return Err(format!("Failed to open network traffic info file: {e}"));
+        }
+    };
 
     let mut raw_data = String::new();
     file.read_to_string(&mut raw_data)
         .await
-        .unwrap_or_else(|e| {
-            error!("Failed to read network traffic info file: {e}");
-            exit(1);
-        });
+        .map_err(|e| format!("Failed to read network traffic info file: {e}"))?;
 
     let raw_network_info = if raw_data.is_empty() {
         let network_info = NetworkInfo {
@@ -163,19 +164,14 @@ async fn get_or_init_latest_network_info(network_config: &NetworkConfig) -> (Fil
         };
         rewrite_network_info_file(&mut file, network_info.encode())
             .await
-            .unwrap_or_else(|e| {
-                error!("Failed to write network traffic info file: {e}");
-                exit(1);
-            });
+            .map_err(|e| format!("Failed to write network traffic info file: {e}"))?;
         info!(
             "Network traffic info file is empty, possibly first run or save path changed, created new file"
         );
         network_info
     } else {
-        let raw_network_info = NetworkInfo::decode(&raw_data).unwrap_or_else(|e| {
-            error!("Failed to parse network traffic info file: {e}");
-            exit(1);
-        });
+        let raw_network_info = NetworkInfo::decode(&raw_data)
+            .map_err(|e| format!("Failed to parse network traffic info file: {e}"))?;
 
         if &raw_network_info.config != network_config {
             warn!(
@@ -193,16 +189,17 @@ async fn get_or_init_latest_network_info(network_config: &NetworkConfig) -> (Fil
             };
             rewrite_network_info_file(&mut file, network_info.encode())
                 .await
-                .unwrap_or_else(|e| {
-                    error!("Failed to write network traffic info file: {e}");
-                    exit(1);
-                });
+                .map_err(|e| format!("Failed to write network traffic info file: {e}"))?;
             info!("Network traffic info cleared");
             network_info
         } else {
             raw_network_info
         }
     };
+
+    if raw_network_info.counter == 0 {
+        return Ok((file, raw_network_info));
+    }
 
     let new_network_info = NetworkInfo {
         config: raw_network_info.config,
@@ -215,12 +212,9 @@ async fn get_or_init_latest_network_info(network_config: &NetworkConfig) -> (Fil
 
     rewrite_network_info_file(&mut file, new_network_info.encode())
         .await
-        .unwrap_or_else(|e| {
-            error!("Failed to write network traffic info file: {e}");
-            exit(1);
-        });
+        .map_err(|e| format!("Failed to write network traffic info file: {e}"))?;
 
-    (file, new_network_info)
+    Ok((file, new_network_info))
 }
 
 pub async fn network_saver(
@@ -232,7 +226,19 @@ pub async fn network_saver(
     }
 
     loop {
-        let (mut file, mut network_info) = get_or_init_latest_network_info(&network_config).await;
+        let (mut file, mut network_info) = match get_or_init_latest_network_info(&network_config)
+            .await
+        {
+            Ok(n) => n,
+            Err(e) => {
+                warn!("An error occurred while getting or initing network traffic info: {e}.");
+                warn!(
+                    "This will fallback to statistics only showing network interface traffic since the current startup, equivalent to `--disable-network-statistics`."
+                );
+                return;
+            }
+        };
+
         let mut networks = Networks::new_with_refreshed_list();
 
         // Add a counter to accumulate memory update times

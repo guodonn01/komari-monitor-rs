@@ -11,6 +11,7 @@
 use crate::callbacks::handle_callbacks;
 use crate::command_parser::Args;
 use crate::data_struct::{BasicInfo, RealTimeInfo};
+use crate::dry_run::dry_run;
 use crate::get_info::network::network_saver::network_saver;
 use crate::utils::{build_urls, connect_ws, init_logger};
 use futures::stream::SplitSink;
@@ -27,15 +28,14 @@ use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::sleep;
 use tokio_tungstenite::tungstenite::{Message, Utf8Bytes};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
-use crate::dry_run::dry_run;
 
 mod callbacks;
 mod command_parser;
 mod data_struct;
+mod dry_run;
 mod get_info;
 mod rustls_config;
 mod utils;
-mod dry_run;
 
 #[tokio::main]
 async fn main() {
@@ -59,11 +59,15 @@ async fn main() {
         }
     };
 
-    let connection_urls = build_urls(http_server.as_ref(), args.ws_server.as_ref(), token.as_ref())
-        .unwrap_or_else(|e| {
-            error!("Failed to parse server address: {e}");
-            exit(1);
-        });
+    let connection_urls = build_urls(
+        http_server.as_ref(),
+        args.ws_server.as_ref(),
+        token.as_ref(),
+    )
+    .unwrap_or_else(|e| {
+        error!("Failed to parse server address: {e}");
+        exit(1);
+    });
 
     info!("Successfully read arguments: {args:?}");
 
