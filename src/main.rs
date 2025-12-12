@@ -16,7 +16,7 @@ use crate::get_info::network::network_saver::network_saver;
 use crate::utils::{build_urls, connect_ws, init_logger};
 use futures::stream::SplitSink;
 use futures::{SinkExt, StreamExt};
-use log::{error, info};
+use log::{debug, error, info};
 use miniserde::json;
 use std::process::exit;
 use std::sync::Arc;
@@ -59,6 +59,10 @@ async fn main() {
         }
     };
 
+    for line in args.to_string().lines() {
+        debug!("{line}");
+    }
+
     let connection_urls = build_urls(
         http_server.as_ref(),
         args.ws_server.as_ref(),
@@ -69,7 +73,9 @@ async fn main() {
         exit(1);
     });
 
-    info!("Successfully read arguments: {args:?}");
+    for line in connection_urls.to_string().lines() {
+        debug!("{line}");
+    }
 
     let (network_saver_tx, mut network_saver_rx): (Sender<(u64, u64)>, Receiver<(u64, u64)>) =
         tokio::sync::mpsc::channel(15);

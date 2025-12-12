@@ -1,6 +1,7 @@
 use crate::command_parser::LogLevel;
 use crate::rustls_config::create_dangerous_config;
-use log::{Level, info};
+use log::Level;
+use std::fmt::Display;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpStream;
@@ -29,6 +30,16 @@ pub struct ConnectionUrls {
     pub exec_callback: String,
     pub ws_terminal: String,
     pub ws_real_time: String,
+}
+
+impl Display for ConnectionUrls {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Connection URLs:")?;
+        writeln!(f, "  Basic Info URL: {}", self.basic_info)?;
+        writeln!(f, "  Exec Callback URL: {}", self.exec_callback)?;
+        writeln!(f, "  WebSocket Terminal URL: {}", self.ws_terminal)?;
+        writeln!(f, "  WebSocket Real-time URL: {}", self.ws_real_time)
+    }
 }
 
 pub fn build_urls(
@@ -66,8 +77,6 @@ pub fn build_urls(
         ws_terminal: ws_terminal_url,
         ws_real_time: ws_real_time_url,
     };
-
-    info!("URL parsing successful: {connection_urls:?}");
 
     Ok(connection_urls)
 }

@@ -1,6 +1,7 @@
 use log::{error, info};
 use miniserde::{Deserialize, Serialize};
 use palc::{Parser, ValueEnum};
+use std::fmt::Display;
 use std::path::PathBuf;
 use std::process::exit;
 use std::{env, fs};
@@ -171,6 +172,79 @@ impl Args {
                 }
             },
         }
+    }
+}
+
+impl Display for Args {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Configuration:")?;
+
+        if let Some(http_server) = &self.http_server {
+            writeln!(f, "  HTTP Server: {}", http_server)?;
+        }
+
+        if let Some(ws_server) = &self.ws_server {
+            writeln!(f, "  WebSocket Server: {}", ws_server)?;
+        }
+
+        if let Some(token) = &self.token {
+            writeln!(f, "  Token: {}", token)?;
+        }
+
+        if self.fake != 1.0 {
+            writeln!(f, "  Fake Multiplier: {}", self.fake)?;
+        }
+
+        if self.tls {
+            writeln!(f, "  TLS Enabled: true")?;
+        }
+
+        if self.ignore_unsafe_cert {
+            writeln!(f, "  Ignore Unsafe Certificates: true")?;
+        }
+
+        if self.dry_run {
+            writeln!(f, "  Dry Run Mode: enabled")?;
+        }
+
+        writeln!(f, "  Log Level: {:?}", self.log_level)?;
+        writeln!(f, "  IP Provider: {:?}", self.ip_provider)?;
+
+        if self.terminal {
+            writeln!(f, "  Terminal Enabled: true")?;
+            writeln!(f, "  Terminal Entry: {}", self.terminal_entry)?;
+        }
+
+        writeln!(
+            f,
+            "  Real-time Info Interval: {} ms",
+            self.realtime_info_interval
+        )?;
+
+        writeln!(
+            f,
+            "  Network Statistics: {}",
+            if self.disable_network_statistics {
+                "disabled"
+            } else {
+                "enabled"
+            }
+        )?;
+
+        if !self.disable_network_statistics {
+            writeln!(f, "    Duration: {} s", self.network_duration)?;
+            writeln!(f, "    Interval: {} s", self.network_interval)?;
+            writeln!(
+                f,
+                "    Save Interval: {} cycles",
+                self.network_interval_number
+            )?;
+            if let Some(save_path) = &self.network_save_path {
+                writeln!(f, "    Save Path: {}", save_path)?;
+            }
+        }
+
+        Ok(())
     }
 }
 

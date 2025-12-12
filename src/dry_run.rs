@@ -79,4 +79,6 @@ pub async fn dry_run() {
     }
     let connections = realtime_connections();
     info!("CONNS: TCP: {} | UDP: {}", connections.tcp, connections.udp);
+
+    info!("===== DIVIDING LINE =====")
 }
