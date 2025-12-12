@@ -77,6 +77,34 @@ async fn main() {
         debug!("{line}");
     }
 
+    #[cfg(target_os = "windows")]
+    {
+        if !args.disable_toast_notify {
+            use win_toast_notify::{WinToastNotify, Action, ActivationType};
+            WinToastNotify::new()
+                .set_title("Komari-monitor-rs Is Running!")
+                .set_messages(vec![
+                    "Komari-monitor-rs is an application used to monitor your system, granting it near-complete access to your computer. If you did not actively install this program, please check your system immediately. If you have intentionally used this software on your system, please ignore this message or add `--disable-toast-notify` to your startup parameters."
+                ])
+                .set_actions(vec![
+                    Action {
+                        activation_type: ActivationType::Protocol,
+                        action_content: "komari-monitor".to_string(),
+                        arguments: "https://github.com/komari-monitor".to_string(),
+                        image_url: None
+                    },
+                    Action {
+                        activation_type: ActivationType::Protocol,
+                        action_content: "komari-monitor-rs".to_string(),
+                        arguments: "https://github.com/GenshinMinecraft/komari-monitor-rs".to_string(),
+                        image_url: None
+                    },
+                ])
+                .show()
+                .expect("Failed to show toast notification");
+        }
+    }
+
     let (network_saver_tx, mut network_saver_rx): (Sender<(u64, u64)>, Receiver<(u64, u64)>) =
         tokio::sync::mpsc::channel(15);
 

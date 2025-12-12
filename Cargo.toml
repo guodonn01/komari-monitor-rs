@@ -29,6 +29,7 @@ nyquest = { version = "0.3", default-features = false, features = ["blocking"], 
 [target.'cfg(target_os = "windows")'.dependencies]
 raw-cpuid = "11.5.0"
 netstat2 = "0.11.2"
+win-toast-notify = "0.1.6"
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 nyquest-preset = { version = "0.3", default-features = false, features = ["blocking"], optional = true }

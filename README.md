@@ -12,6 +12,17 @@ Agent
 
 ## 近期更新
 
+### Windows Toast Notify
+
+由于安全性问题，现在默认情况下在 Windows 系统下运行时会发送 Windows 系统 Toast 通知，内容为:
+
+```
+Komari-monitor-rs Is Running!
+Komari-monitor-rs is an application used to monitor your system, granting it near-complete access to your computer. If you did not actively install this program, please check your system immediately. If you have intentionally used this software on your system, please ignore this message or add `--disable-toast-notify` to your startup parameters.
+```
+
+可以通过 `--disable-toast-notify` 参数关闭
+
 ### Dry Run 支持
 
 现在可以不提供任何参数，仅提供 `--dry-run` 参数，以事先获取监控数据

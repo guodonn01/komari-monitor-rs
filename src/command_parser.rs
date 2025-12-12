@@ -62,7 +62,11 @@ pub struct Args {
     /// Set Real-Time Info Upload Interval (ms)
     #[arg(long, default_value_t = 1000)]
     pub realtime_info_interval: u64,
-
+    
+    /// Disable Windows Toast Notification (Only Windows)
+    #[arg(long, default_value_t = false)]
+    pub disable_toast_notify: bool,
+    
     // Network
     /// Disable Network Statistics
     #[arg(long, default_value_t = false)]
@@ -219,6 +223,12 @@ impl Display for Args {
             f,
             "  Real-time Info Interval: {} ms",
             self.realtime_info_interval
+        )?;
+        
+        writeln!(
+            f,
+            "  Disable Windows Toast Notify: {}",
+            self.disable_toast_notify
         )?;
 
         writeln!(
