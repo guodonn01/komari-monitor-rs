@@ -62,22 +62,6 @@ CONNS: TCP: 12 | UDP: 4
 
 ## 与原版的差异
 
-测试项目均在 Redmi Book Pro 15 2022 锐龙版 + Arch Linux 最新版 + Rust Toolchain Stable 下测试
-
-### Binary 体积
-
-原版体积约 6.2M，本项目体积约 992K，相差约 7.1 倍
-
-### 运行内存与 Cpu 占用
-
-原版占用内存约 15.4 MiB，本项目占用内存约 5.53 MB，相差约 2.7 倍
-
-原版峰值 Cpu 占用约 49.6%，本项目峰值 Cpu 占用约 4.8%
-
-并且，本项目在堆上的内存仅 388 kB
-
-### 实现功能
-
 目前，本项目已经实现原版的大部分功能，但还有以下的差异:
 
 - GPU Name 检测
@@ -101,68 +85,76 @@ CONNS: TCP: 12 | UDP: 4
 ```
 komari-monitor-rs is a third-party high-performance monitoring agent for the komari monitoring service.
 
-Usage: komari-monitor-rs.exe --http-server <HTTP_SERVER> --token <TOKEN> [OPTIONS]
+Usage: komari-monitor-rs [OPTIONS]
 
 Options:
       --http-server <HTTP_SERVER>
-          设置主端 Http 地址
+          Set Main Server Http Address
 
       --ws-server <WS_SERVER>
-          设置主端 WebSocket 地址
+          Set Main Server WebSocket Address
 
   -t, --token <TOKEN>
-          设置 Token
+          Set Token
 
   -f, --fake <FAKE>
-          设置虚假倍率
+          Set Fake Multiplier
           [default: 1]
 
       --tls
-          启用 TLS (默认关闭)
+          Enable TLS (default disabled)
           [default: false]
 
       --ignore-unsafe-cert
-          忽略证书验证
+          Ignore Certificate Verification
+          [default: false]
+
+  -d, --dry-run
+          Dry Run
           [default: false]
 
       --log-level <LOG_LEVEL>
-          设置日志等级 (反馈问题请开启 Debug 或者 Trace)
+          Set Log Level (Enable Debug or Trace for issue reporting)
           [default: info]
 
       --ip-provider <IP_PROVIDER>
-          公网 IP 接口
+          Public IP Provider
           [default: ipinfo]
 
       --terminal
-          启用 Terminal (默认关闭)
+          Enable Terminal (default disabled)
           [default: false]
 
       --terminal-entry <TERMINAL_ENTRY>
-          自定义 Terminal 入口
+          Custom Terminal Entry
           [default: default]
 
       --realtime-info-interval <REALTIME_INFO_INTERVAL>
-          设置 Real-Time Info 上传间隔时间 (ms)
+          Set Real-Time Info Upload Interval (ms)
           [default: 1000]
 
-      --network-statistics
-          启用网络流量统计
-          [default: true]
+      --disable-toast-notify
+          Disable Windows Toast Notification (Only Windows)
+          [default: false]
+
+      --disable-network-statistics
+          Disable Network Statistics
+          [default: false]
 
       --network-duration <NETWORK_DURATION>
-          网络流量统计保存时长 (s)
+          Network Statistics Duration (s)
           [default: 864000]
 
       --network-interval <NETWORK_INTERVAL>
-          网络流量统计间隔 (s)
+          Network Statistics Interval (s)
           [default: 10]
 
       --network-interval-number <NETWORK_INTERVAL_NUMBER>
-          网络流量统计保存到磁盘间隔次数 (s)
+          Network Statistics Save to Disk Interval Count (s)
           [default: 10]
 
       --network-save-path <NETWORK_SAVE_PATH>
-          网络统计保存地址
+          Network Statistics Save Path
 ```
 
 必须设置 `--http-server` / `--token`
