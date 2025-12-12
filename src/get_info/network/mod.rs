@@ -15,11 +15,15 @@ pub fn realtime_network(
     network: &Networks,
     network_saver_rx: &mut Receiver<(u64, u64)>,
 ) -> Network {
-    let (up, down, _, _) = filter_network(network);
+    let (up, down, total_up, total_down) = filter_network(network);
 
     if let Ok(network_saver_rx) = network_saver_rx.try_recv() {
         unsafe {
             LAST_NETWORK = (network_saver_rx.0, network_saver_rx.1);
+        }
+    } else {
+        unsafe {
+            LAST_NETWORK = (total_down, total_up);
         }
     }
 

@@ -79,7 +79,9 @@ async fn main() {
             network_saver(network_saver_tx, &network_config).await;
         });
     } else {
-        info!("Network statistics feature disabled. Network statistics data will not be sent.");
+        info!(
+            "Network statistics feature disabled. This will fallback to statistics only showing network interface traffic since the current startup"
+        );
     }
 
     loop {
