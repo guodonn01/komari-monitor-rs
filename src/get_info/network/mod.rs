@@ -23,7 +23,7 @@ pub fn realtime_network(
         }
     } else {
         unsafe {
-            LAST_NETWORK = (total_down, total_up);
+            LAST_NETWORK = (total_up, total_down);
         }
     }
 

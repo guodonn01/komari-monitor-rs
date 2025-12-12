@@ -37,7 +37,7 @@ CONNS: TCP: 12 | UDP: 4
 
 相关参数:
 
-- `--disable-network-statistics`: 禁用周期流量统计，上报的总流量为 0，默认关闭
+- `--disable-network-statistics`: 禁用周期流量统计，上报的总流量回退到原来自网卡启动以来的总流量，默认关闭
 - `--network-duration`: 周期流量统计 的统计长度，单位 sec，默认 864000 (10 Days)
 - `--network-interval`: 周期流量统计 的间隔长度，单位 sec，默认 10
 - `--network-interval-number`: 周期流量统计 的保存到磁盘间隔次数，默认 10 (该参数意义为 `硬盘读写间隔时间 = 间隔长度 \* 间隔次数`，默认值为 10 * 10 = 100sec 写入一次硬盘)
