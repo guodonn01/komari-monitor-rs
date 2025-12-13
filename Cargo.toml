@@ -1,6 +1,6 @@
 [package]
 name = "komari-monitor-rs"
-version = "0.3.1-noexec"
+version = "0.3.2-noexec"
 edition = "2024"
 authors = ["GenshinMinecrat <gm@highp.ing>"]
 description = "Komari Monitor Agent in Rust"
@@ -28,6 +28,7 @@ nyquest = { version = "0.3", default-features = false, features = ["blocking"], 
 [target.'cfg(target_os = "windows")'.dependencies]
 raw-cpuid = "11.5.0"
 netstat2 = "0.11.2"
+win-toast-notify = "0.1.6"
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 nyquest-preset = { version = "0.3", default-features = false, features = ["blocking"], optional = true }

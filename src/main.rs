@@ -11,11 +11,12 @@
 use crate::callbacks::handle_callbacks;
 use crate::command_parser::Args;
 use crate::data_struct::{BasicInfo, RealTimeInfo};
+use crate::dry_run::dry_run;
 use crate::get_info::network::network_saver::network_saver;
 use crate::utils::{build_urls, connect_ws, init_logger};
 use futures::stream::SplitSink;
 use futures::{SinkExt, StreamExt};
-use log::{error, info};
+use log::{debug, error, info};
 use miniserde::json;
 use std::process::exit;
 use std::sync::Arc;
@@ -27,15 +28,14 @@ use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::sleep;
 use tokio_tungstenite::tungstenite::{Message, Utf8Bytes};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
-use crate::dry_run::dry_run;
 
 mod callbacks;
 mod command_parser;
 mod data_struct;
+mod dry_run;
 mod get_info;
 mod rustls_config;
 mod utils;
-mod dry_run;
 
 #[tokio::main]
 async fn main() {
@@ -59,13 +59,51 @@ async fn main() {
         }
     };
 
-    let connection_urls = build_urls(http_server.as_ref(), args.ws_server.as_ref(), token.as_ref())
-        .unwrap_or_else(|e| {
-            error!("Failed to parse server address: {e}");
-            exit(1);
-        });
+    for line in args.to_string().lines() {
+        debug!("{line}");
+    }
 
-    info!("Successfully read arguments: {args:?}");
+    let connection_urls = build_urls(
+        http_server.as_ref(),
+        args.ws_server.as_ref(),
+        token.as_ref(),
+    )
+    .unwrap_or_else(|e| {
+        error!("Failed to parse server address: {e}");
+        exit(1);
+    });
+
+    for line in connection_urls.to_string().lines() {
+        debug!("{line}");
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        if !args.disable_toast_notify {
+            use win_toast_notify::{WinToastNotify, Action, ActivationType};
+            WinToastNotify::new()
+                .set_title("Komari-monitor-rs Is Running!")
+                .set_messages(vec![
+                    "Komari-monitor-rs is an application used to monitor your system, granting it near-complete access to your computer. If you did not actively install this program, please check your system immediately. If you have intentionally used this software on your system, please ignore this message or add `--disable-toast-notify` to your startup parameters."
+                ])
+                .set_actions(vec![
+                    Action {
+                        activation_type: ActivationType::Protocol,
+                        action_content: "komari-monitor".to_string(),
+                        arguments: "https://github.com/komari-monitor".to_string(),
+                        image_url: None
+                    },
+                    Action {
+                        activation_type: ActivationType::Protocol,
+                        action_content: "komari-monitor-rs".to_string(),
+                        arguments: "https://github.com/GenshinMinecraft/komari-monitor-rs".to_string(),
+                        image_url: None
+                    },
+                ])
+                .show()
+                .expect("Failed to show toast notification");
+        }
+    }
 
     let (network_saver_tx, mut network_saver_rx): (Sender<(u64, u64)>, Receiver<(u64, u64)>) =
         tokio::sync::mpsc::channel(15);
@@ -75,7 +113,9 @@ async fn main() {
             network_saver(network_saver_tx, &network_config).await;
         });
     } else {
-        info!("Network statistics feature disabled. Network statistics data will not be sent.");
+        info!(
+            "Network statistics feature disabled. This will fallback to statistics only showing network interface traffic since the current startup"
+        );
     }
 
     loop {

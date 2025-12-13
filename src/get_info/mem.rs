@@ -1,4 +1,5 @@
 use crate::data_struct::{Disk, Ram, Swap};
+use std::collections::HashSet;
 use log::trace;
 use sysinfo::{Disks, System};
 
@@ -78,6 +79,7 @@ pub fn filter_disks(disks: &Disks) -> Vec<&sysinfo::Disk> {
         "exfat",
         "xfs",
         "fuse.rclone",
+        "ubifs",
     ];
 
     let filtered_fs: Vec<&sysinfo::Disk> = disks
@@ -100,6 +102,7 @@ pub fn filter_disks(disks: &Disks) -> Vec<&sysinfo::Disk> {
         "/boot",
         "/lost+found",
         "/nix/store",
+        "/var/log.hdd",
     ];
 
     let filtered_special_mount_point: Vec<&sysinfo::Disk> = filtered_fs
@@ -112,5 +115,15 @@ pub fn filter_disks(disks: &Disks) -> Vec<&sysinfo::Disk> {
         })
         .collect();
 
-    filtered_special_mount_point
+    let mut unique_disks = Vec::new();
+    let mut seen_devices = HashSet::new();
+
+    for disk in filtered_special_mount_point {
+        let name = disk.name().to_string_lossy().into_owned();
+        if seen_devices.insert(name) {
+            unique_disks.push(disk);
+        }
+    }
+
+    unique_disks
 }
