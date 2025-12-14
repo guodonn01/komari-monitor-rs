@@ -155,7 +155,7 @@ async fn get_or_init_latest_network_info(
     };
 
     let new_boot_id = if cfg!(target_os = "linux") {
-        fs::read_to_string("/proc/sys/kernel/random/boot_id").unwrap_or_default()
+        fs::read_to_string("/proc/sys/kernel/random/boot_id").unwrap_or_default().trim().to_string()
     } else {
         String::new()
     };
@@ -191,9 +191,8 @@ async fn get_or_init_latest_network_info(
                 e
             );
             tokio::time::sleep(Duration::from_secs(3)).await;
-            
-            // 删除原文件
-            drop(file); // 先关闭文件
+
+            drop(file);
             if let Err(e) = tokio::fs::remove_file(&network_config.network_save_path).await {
                 return Err(format!("Failed to remove corrupted network traffic info file: {e}"));
             }
@@ -260,7 +259,7 @@ async fn get_or_init_latest_network_info(
         return Ok((file, raw_network_info));
     }
 
-    let new_network_info = if cfg!(target_os = "linux") {
+    let new_network_info = if cfg!(target_os = "linux") && !new_boot_id.is_empty() {
         if raw_network_info.boot_id != new_boot_id {
             NetworkInfo {
                 config: raw_network_info.config,
