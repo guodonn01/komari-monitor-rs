@@ -2,6 +2,7 @@ use crate::data_struct::{Disk, Ram, Swap};
 use std::collections::HashSet;
 use log::trace;
 use sysinfo::{Disks, System};
+use std::sync::OnceLock;
 
 #[derive(Debug)]
 pub struct MemDiskTotalInfoWithOutUsage {
@@ -61,64 +62,80 @@ pub fn realtime_disk(disk: &Disks) -> Disk {
     disk_info
 }
 
+fn get_allowed_filesystems() -> &'static HashSet<&'static str> {
+    static ALLOWED_FS: OnceLock<HashSet<&str>> = OnceLock::new();
+    ALLOWED_FS.get_or_init(|| {
+        [
+            "apfs",
+            "ext4",
+            "ext3",
+            "ext2",
+            "f2fs",
+            "reiserfs",
+            "jfs",
+            "btrfs",
+            "fuseblk",
+            "zfs",
+            "simfs",
+            "ntfs",
+            "fat32",
+            "exfat",
+            "xfs",
+            "fuse.rclone",
+            "ubifs",
+        ]
+        .iter()
+        .cloned()
+        .collect()
+    })
+}
+
+fn get_exclude_keywords() -> &'static HashSet<&'static str> {
+    static EXCLUDE_KEYWORDS: OnceLock<HashSet<&str>> = OnceLock::new();
+    EXCLUDE_KEYWORDS.get_or_init(|| {
+        [
+            "/snap",
+            "/var/lib/docker",
+            "/var/lib/lxcfs",
+            "/run/user",
+            "/tmp",
+            "/dev",
+            "/sys",
+            "/proc",
+            "/boot",
+            "/lost+found",
+            "/nix/store",
+            "/var/log.hdd",
+        ]
+        .iter()
+        .cloned()
+        .collect()
+    })
+}
+
 pub fn filter_disks(disks: &Disks) -> Vec<&sysinfo::Disk> {
-    let allowed_fs = [
-        "apfs",
-        "ext4",
-        "ext3",
-        "ext2",
-        "f2fs",
-        "reiserfs",
-        "jfs",
-        "btrfs",
-        "fuseblk",
-        "zfs",
-        "simfs",
-        "ntfs",
-        "fat32",
-        "exfat",
-        "xfs",
-        "fuse.rclone",
-        "ubifs",
-    ];
-
-    let filtered_fs: Vec<&sysinfo::Disk> = disks
-        .iter() // Returns &Disk
-        .filter(|disk| {
-            let fs = disk.file_system().to_string_lossy();
-            allowed_fs.contains(&fs.as_ref())
-        })
-        .collect();
-
-    let exclude_keywords = [
-        "/snap",
-        "/var/lib/docker",
-        "/var/lib/lxcfs",
-        "/run/user",
-        "/tmp",
-        "/dev",
-        "/sys",
-        "/proc",
-        "/boot",
-        "/lost+found",
-        "/nix/store",
-        "/var/log.hdd",
-    ];
-
-    let filtered_special_mount_point: Vec<&sysinfo::Disk> = filtered_fs
-        .into_iter()
-        .filter(|disk| {
-            let mount_point = disk.mount_point().to_string_lossy();
-            !exclude_keywords
-                .iter()
-                .any(|keyword| mount_point.contains(keyword))
-        })
-        .collect();
+    let allowed_fs = get_allowed_filesystems();
+    let exclude_keywords = get_exclude_keywords();
 
     let mut unique_disks = Vec::new();
     let mut seen_devices = HashSet::new();
 
-    for disk in filtered_special_mount_point {
+    for disk in disks.iter() {
+        // Filter by filesystem type
+        let fs = disk.file_system().to_string_lossy();
+        if !allowed_fs.contains(fs.as_ref()) {
+            continue;
+        }
+
+        // Filter by mount point
+        let mount_point = disk.mount_point().to_string_lossy();
+        if exclude_keywords
+            .iter()
+            .any(|keyword| mount_point.contains(keyword)) {
+            continue;
+        }
+
+        // Deduplicate by device name
         let name = disk.name().to_string_lossy().into_owned();
         if seen_devices.insert(name) {
             unique_disks.push(disk);
