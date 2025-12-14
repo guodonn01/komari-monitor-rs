@@ -1,6 +1,5 @@
 use crate::data_struct::{Connections, Network};
 use log::trace;
-use std::collections::HashSet;
 use sysinfo::Networks;
 use tokio::sync::mpsc::Receiver;
 
@@ -105,16 +104,13 @@ pub fn filter_network(network: &Networks) -> (u64, u64, u64, u64) {
     let mut up = 0;
     let mut down = 0;
 
-    let filter_keywords: HashSet<&str> = [
+    static FILTER_KEYWORDS: &[&str] = &[
         "br", "cni", "docker", "podman", "flannel", "lo", "veth", "virbr", "vmbr", "tap", "tun",
         "fwln", "fwpr",
-    ]
-    .iter()
-    .cloned()
-    .collect();
+    ];
 
     for (name, data) in network {
-        let should_filter = filter_keywords
+        let should_filter = FILTER_KEYWORDS
             .iter()
             .any(|&keyword| name.contains(keyword));
 

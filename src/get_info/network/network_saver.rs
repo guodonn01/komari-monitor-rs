@@ -5,7 +5,6 @@ use miniserde::{Deserialize, Serialize};
 use std::cmp::PartialEq;
 use std::fs;
 use std::io::SeekFrom;
-use std::process::exit;
 use std::str::FromStr;
 use std::time::Duration;
 use sysinfo::Networks;
@@ -155,7 +154,13 @@ async fn get_or_init_latest_network_info(
     };
 
     let new_boot_id = if cfg!(target_os = "linux") {
-        fs::read_to_string("/proc/sys/kernel/random/boot_id").unwrap_or_default().trim().to_string()
+        match fs::read_to_string("/proc/sys/kernel/random/boot_id") {
+            Ok(content) => content.trim().to_string(),
+            Err(e) => {
+                warn!("Failed to read boot_id: {}", e);
+                String::new()
+            }
+        }
     } else {
         String::new()
     };
@@ -197,20 +202,7 @@ async fn get_or_init_latest_network_info(
                 return Err(format!("Failed to remove corrupted network traffic info file: {e}"));
             }
             
-            // 重新创建文件
-            file = match OpenOptions::new()
-                .read(true)
-                .write(true)
-                .create(true)
-                .truncate(false)
-                .open(&network_config.network_save_path)
-                .await
-            {
-                Ok(file) => file,
-                Err(e) => {
-                    return Err(format!("Failed to reopen network traffic info file: {e}"));
-                }
-            };
+            file = reopen_network_file(&network_config.network_save_path).await?;
             
             let network_info = NetworkInfo {
                 config: network_config.clone(),
@@ -339,12 +331,10 @@ pub async fn network_saver(
                 || network_info.counter == 0
             {
                 if network_info.counter == 0 {
-                    rewrite_network_info_file(&mut file, String::new())
-                        .await
-                        .unwrap_or_else(|e| {
-                            error!("Failed to write network traffic info file: {e}");
-                            exit(1);
-                        });
+                    if let Err(e) = rewrite_network_info_file(&mut file, String::new()).await {
+                        error!("Failed to write network traffic info file: {e}");
+                        break;
+                    }
                     info!("Finished one cycle of traffic statistics, data cleared");
                     break;
                 } else {
@@ -385,4 +375,18 @@ async fn rewrite_network_info_file(
     file.seek(SeekFrom::Start(0)).await?;
     file.write_all(string.as_bytes()).await?;
     Ok(())
+}
+
+async fn reopen_network_file(path: &str) -> Result<File, String> {
+    match OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(path)
+        .await
+    {
+        Ok(file) => Ok(file),
+        Err(e) => Err(format!("Failed to reopen network traffic info file: {e}")),
+    }
 }
