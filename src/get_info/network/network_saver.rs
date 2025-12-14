@@ -3,6 +3,7 @@ use crate::get_info::network::filter_network;
 use log::{error, info, warn};
 use miniserde::{Deserialize, Serialize};
 use std::cmp::PartialEq;
+use std::fs;
 use std::io::SeekFrom;
 use std::process::exit;
 use std::str::FromStr;
@@ -14,6 +15,7 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 #[derive(Serialize, Deserialize, PartialEq)]
 struct NetworkInfo {
     config: NetworkConfig,
+    boot_id: String,
     source_tx: u64,
     source_rx: u64,
     latest_tx: u64,
@@ -43,6 +45,7 @@ impl NetworkInfo {
         );
         append_line!("network_save_path", self.config.network_save_path);
 
+        append_line!("boot_id", self.boot_id);
         append_line!("source_tx", self.source_tx);
         append_line!("source_rx", self.source_rx);
         append_line!("latest_tx", self.latest_tx);
@@ -59,6 +62,7 @@ impl NetworkInfo {
         let mut network_interval = None;
         let mut network_interval_number = None;
         let mut network_save_path = None;
+        let mut boot_id = None;
         let mut source_tx = None;
         let mut source_rx = None;
         let mut latest_tx = None;
@@ -102,6 +106,7 @@ impl NetworkInfo {
                     network_interval_number = Some(value.parse().map_err(|_| parse_err("u32"))?)
                 }
                 "network_save_path" => network_save_path = Some(value.to_string()),
+                "boot_id" => boot_id = Some(value.to_string()),
                 "source_tx" => source_tx = Some(value.parse().map_err(|_| parse_err("u64"))?),
                 "source_rx" => source_rx = Some(value.parse().map_err(|_| parse_err("u64"))?),
                 "latest_tx" => latest_tx = Some(value.parse().map_err(|_| parse_err("u64"))?),
@@ -122,6 +127,7 @@ impl NetworkInfo {
                     .ok_or("Missing field: network_interval_number")?,
                 network_save_path: network_save_path.ok_or("Missing field: network_save_path")?,
             },
+            boot_id: boot_id.ok_or("Missing field: boot_id")?,
             source_tx: source_tx.ok_or("Missing field: source_tx")?,
             source_rx: source_rx.ok_or("Missing field: source_rx")?,
             latest_tx: latest_tx.ok_or("Missing field: latest_tx")?,
@@ -148,6 +154,12 @@ async fn get_or_init_latest_network_info(
         }
     };
 
+    let new_boot_id = if cfg!(target_os = "linux") {
+        fs::read_to_string("/proc/sys/kernel/random/boot_id").unwrap_or_default()
+    } else {
+        String::new()
+    };
+
     let mut raw_data = String::new();
     file.read_to_string(&mut raw_data)
         .await
@@ -156,6 +168,7 @@ async fn get_or_init_latest_network_info(
     let raw_network_info = if raw_data.is_empty() {
         let network_info = NetworkInfo {
             config: network_config.clone(),
+            boot_id: new_boot_id.clone(),
             source_tx: 0,
             source_rx: 0,
             latest_tx: 0,
@@ -170,17 +183,39 @@ async fn get_or_init_latest_network_info(
         );
         network_info
     } else {
-        let raw_network_info = NetworkInfo::decode(&raw_data)
-            .map_err(|e| format!("Failed to parse network traffic info file: {e}"))?;
-
-        if &raw_network_info.config != network_config {
+        let raw_network_info = NetworkInfo::decode(&raw_data);
+        
+        if let Err(e) = &raw_network_info {
             warn!(
-                "Network traffic info file configuration does not match, overwriting file and resetting statistics in 3 seconds. Press Ctrl+C to stop."
+                "Failed to parse network traffic info file: {}. Will recreate the file in 3 seconds.",
+                e
             );
             tokio::time::sleep(Duration::from_secs(3)).await;
-            warn!("Starting to clear network traffic info");
+            
+            // 删除原文件
+            drop(file); // 先关闭文件
+            if let Err(e) = tokio::fs::remove_file(&network_config.network_save_path).await {
+                return Err(format!("Failed to remove corrupted network traffic info file: {e}"));
+            }
+            
+            // 重新创建文件
+            file = match OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(&network_config.network_save_path)
+                .await
+            {
+                Ok(file) => file,
+                Err(e) => {
+                    return Err(format!("Failed to reopen network traffic info file: {e}"));
+                }
+            };
+            
             let network_info = NetworkInfo {
                 config: network_config.clone(),
+                boot_id: new_boot_id.clone(),
                 source_tx: 0,
                 source_rx: 0,
                 latest_tx: 0,
@@ -190,10 +225,34 @@ async fn get_or_init_latest_network_info(
             rewrite_network_info_file(&mut file, network_info.encode())
                 .await
                 .map_err(|e| format!("Failed to write network traffic info file: {e}"))?;
-            info!("Network traffic info cleared");
+            info!("Recreated network traffic info file");
             network_info
         } else {
-            raw_network_info
+            let raw_network_info = raw_network_info?;
+            
+            if &raw_network_info.config != network_config {
+                warn!(
+                    "Network traffic info file configuration does not match, overwriting file and resetting statistics in 3 seconds. Press Ctrl+C to stop."
+                );
+                tokio::time::sleep(Duration::from_secs(3)).await;
+                warn!("Starting to clear network traffic info");
+                let network_info = NetworkInfo {
+                    config: network_config.clone(),
+                    boot_id: new_boot_id.clone(),
+                    source_tx: 0,
+                    source_rx: 0,
+                    latest_tx: 0,
+                    latest_rx: 0,
+                    counter: network_config.network_duration / network_config.network_interval,
+                };
+                rewrite_network_info_file(&mut file, network_info.encode())
+                    .await
+                    .map_err(|e| format!("Failed to write network traffic info file: {e}"))?;
+                info!("Network traffic info cleared");
+                network_info
+            } else {
+                raw_network_info
+            }
         }
     };
 
@@ -201,13 +260,33 @@ async fn get_or_init_latest_network_info(
         return Ok((file, raw_network_info));
     }
 
-    let new_network_info = NetworkInfo {
-        config: raw_network_info.config,
-        source_tx: raw_network_info.source_tx + raw_network_info.latest_tx,
-        source_rx: raw_network_info.source_rx + raw_network_info.latest_rx,
-        latest_tx: 0,
-        latest_rx: 0,
-        counter: raw_network_info.counter - 1,
+    let new_network_info = if cfg!(target_os = "linux") {
+        if raw_network_info.boot_id != new_boot_id {
+            NetworkInfo {
+                config: raw_network_info.config,
+                boot_id: new_boot_id,
+                source_tx: raw_network_info.source_tx + raw_network_info.latest_tx,
+                source_rx: raw_network_info.source_rx + raw_network_info.latest_rx,
+                latest_tx: 0,
+                latest_rx: 0,
+                counter: raw_network_info.counter - 1,
+            }
+        } else {
+            NetworkInfo {
+                counter: raw_network_info.counter - 1,
+                ..raw_network_info
+            }
+        }
+    } else {
+        NetworkInfo {
+            config: raw_network_info.config,
+            boot_id: new_boot_id,
+            source_tx: raw_network_info.source_tx + raw_network_info.latest_tx,
+            source_rx: raw_network_info.source_rx + raw_network_info.latest_rx,
+            latest_tx: 0,
+            latest_rx: 0,
+            counter: raw_network_info.counter - 1,
+        }
     };
 
     rewrite_network_info_file(&mut file, new_network_info.encode())
@@ -249,12 +328,10 @@ pub async fn network_saver(
             let (_, _, total_up, total_down) = filter_network(&networks);
 
             network_info = NetworkInfo {
-                config: network_info.config,
-                source_tx: network_info.source_tx,
-                source_rx: network_info.source_rx,
                 latest_tx: total_up,
                 latest_rx: total_down,
                 counter: network_info.counter - 1,
+                ..network_info
             };
 
             memory_update_count += 1;
