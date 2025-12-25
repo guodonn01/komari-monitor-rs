@@ -182,7 +182,7 @@ impl RealTimeInfo {
     pub fn build(
         sysinfo_sys: &sysinfo::System,
         network: &Networks,
-        network_saver_rx: &mut Receiver<(u64, u64)>,
+        network_saver_rx: Option<&mut Receiver<(u64, u64)>>,
         disk: &Disks,
         fake: f64,
     ) -> Self {

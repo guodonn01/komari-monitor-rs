@@ -37,7 +37,7 @@ async fn fetch_ipinfo_v4() -> Option<String> {
             .ip_family(ureq::config::IpFamily::Ipv4Only)
             .build()
             .call();
-        
+
         if let Ok(mut response) = resp {
             return response.body_mut().read_to_string().ok();
         }
@@ -53,7 +53,7 @@ async fn fetch_ipinfo_v4() -> Option<String> {
             return res.text().ok();
         }
     }
-    
+
     None
 }
 
@@ -67,7 +67,7 @@ async fn fetch_ipinfo_v6() -> Option<String> {
             .ip_family(ureq::config::IpFamily::Ipv6Only)
             .build()
             .call();
-            
+
         if let Ok(mut response) = resp {
             return response.body_mut().read_to_string().ok();
         }
@@ -83,7 +83,7 @@ async fn fetch_ipinfo_v6() -> Option<String> {
             return res.text().ok();
         }
     }
-    
+
     None
 }
 
@@ -97,7 +97,7 @@ async fn fetch_cloudflare_v4() -> Option<String> {
             .ip_family(ureq::config::IpFamily::Ipv4Only)
             .build()
             .call();
-            
+
         if let Ok(mut response) = resp {
             return response.body_mut().read_to_string().ok();
         }
@@ -113,7 +113,7 @@ async fn fetch_cloudflare_v4() -> Option<String> {
             return res.text().ok();
         }
     }
-    
+
     None
 }
 
@@ -143,7 +143,7 @@ async fn fetch_cloudflare_v6() -> Option<String> {
             return res.text().ok();
         }
     }
-    
+
     None
 }
 
