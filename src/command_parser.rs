@@ -3,7 +3,6 @@ use miniserde::{Deserialize, Serialize};
 use palc::{Parser, ValueEnum};
 use std::fmt::Display;
 use std::path::PathBuf;
-use std::process::exit;
 use std::{env, fs};
 
 #[derive(Parser, Debug, Clone)]
