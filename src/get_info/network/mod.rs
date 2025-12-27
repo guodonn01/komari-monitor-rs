@@ -12,13 +12,15 @@ static mut LAST_NETWORK: (u64, u64) = (0, 0);
 pub static mut DURATION: f64 = 0.0;
 pub fn realtime_network(
     network: &Networks,
-    network_saver_rx: &mut Receiver<(u64, u64)>,
+    network_saver_rx: Option<&mut Receiver<(u64, u64)>>,
 ) -> Network {
     let (up, down, total_up, total_down) = filter_network(network);
 
-    if let Ok(network_saver_rx) = network_saver_rx.try_recv() {
-        unsafe {
-            LAST_NETWORK = (network_saver_rx.0, network_saver_rx.1);
+    if let Some(network_saver_rx) = network_saver_rx {
+        if let Ok(network_saver_rx) = network_saver_rx.try_recv() {
+            unsafe {
+                LAST_NETWORK = (network_saver_rx.0, network_saver_rx.1);
+            }
         }
     } else {
         unsafe {

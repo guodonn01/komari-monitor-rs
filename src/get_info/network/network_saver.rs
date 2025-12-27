@@ -189,7 +189,7 @@ async fn get_or_init_latest_network_info(
         network_info
     } else {
         let raw_network_info = NetworkInfo::decode(&raw_data);
-        
+
         if let Err(e) = &raw_network_info {
             warn!(
                 "Failed to parse network traffic info file: {}. Will recreate the file in 3 seconds.",
@@ -199,11 +199,13 @@ async fn get_or_init_latest_network_info(
 
             drop(file);
             if let Err(e) = tokio::fs::remove_file(&network_config.network_save_path).await {
-                return Err(format!("Failed to remove corrupted network traffic info file: {e}"));
+                return Err(format!(
+                    "Failed to remove corrupted network traffic info file: {e}"
+                ));
             }
-            
+
             file = reopen_network_file(&network_config.network_save_path).await?;
-            
+
             let network_info = NetworkInfo {
                 config: network_config.clone(),
                 boot_id: new_boot_id.clone(),
@@ -220,7 +222,7 @@ async fn get_or_init_latest_network_info(
             network_info
         } else {
             let raw_network_info = raw_network_info?;
-            
+
             if &raw_network_info.config != network_config {
                 warn!(
                     "Network traffic info file configuration does not match, overwriting file and resetting statistics in 3 seconds. Press Ctrl+C to stop."

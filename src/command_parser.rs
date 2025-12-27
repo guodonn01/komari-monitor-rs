@@ -53,11 +53,11 @@ pub struct Args {
     /// Set Real-Time Info Upload Interval (ms)
     #[arg(long, default_value_t = 1000)]
     pub realtime_info_interval: u64,
-    
+
     /// Disable Windows Toast Notification (Only Windows)
     #[arg(long, default_value_t = false)]
     pub disable_toast_notify: bool,
-    
+
     // Network
     /// Disable Network Statistics
     #[arg(long, default_value_t = false)]
@@ -98,19 +98,19 @@ impl Args {
         args
     }
     pub fn network_config(&self) -> NetworkConfig {
-        NetworkConfig {
-            disable_network_statistics: self.disable_network_statistics,
-            network_duration: self.network_duration,
-            network_interval: self.network_interval,
-            network_interval_number: self.network_interval_number,
-            network_save_path: {
-                if self.network_save_path.is_none() {
-                    if cfg!(windows) {
-                        PathBuf::from(r"C:\komari-network.conf")
-                            .to_string_lossy()
-                            .to_string()
-                    } else {
-                        let is_root = env::var("EUID")
+        let path = {
+            if self.network_save_path.is_none() {
+                if cfg!(windows) {
+                    PathBuf::from(r"C:\komari-network.conf")
+                        .to_string_lossy()
+                        .to_string()
+                } else {
+                    let is_root = env::var("EUID")
+                        .unwrap_or("999".to_string())
+                        .parse::<i32>()
+                        .unwrap_or(999)
+                        == 0
+                        || env::var("UID")
                             .unwrap_or("999".to_string())
                             .parse::<i32>()
                             .unwrap_or(999)
@@ -135,15 +135,30 @@ impl Args {
                             path
                         );
                         path
-                    }
-                } else {
-                    let path = PathBuf::from(self.network_save_path.as_ref().unwrap())
-                        .to_string_lossy()
-                        .to_string();
-                    info!("Using specified Network Config save path: {}", path);
-                    path
                 }
-            },
+            } else {
+                let path = PathBuf::from(self.network_save_path.as_ref().unwrap())
+                    .to_string_lossy()
+                    .to_string();
+                info!("Using specified Network Config save path: {}", path);
+                path
+            }
+        };
+
+        let disable_network_statistics = if self.disable_network_statistics {
+            true
+        } else if !self.disable_network_statistics && path.is_empty() {
+            false
+        } else {
+            false
+        };
+
+        NetworkConfig {
+            disable_network_statistics,
+            network_duration: self.network_duration,
+            network_interval: self.network_interval,
+            network_interval_number: self.network_interval_number,
+            network_save_path: path,
         }
     }
 }
@@ -188,7 +203,7 @@ impl Display for Args {
             "  Real-time Info Interval: {} ms",
             self.realtime_info_interval
         )?;
-        
+
         writeln!(
             f,
             "  Disable Windows Toast Notify: {}",

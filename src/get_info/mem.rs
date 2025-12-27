@@ -1,8 +1,8 @@
 use crate::data_struct::{Disk, Ram, Swap};
-use std::collections::HashSet;
 use log::trace;
-use sysinfo::{Disks, System};
+use std::collections::HashSet;
 use std::sync::OnceLock;
+use sysinfo::{Disks, System};
 
 #[derive(Debug)]
 pub struct MemDiskTotalInfoWithOutUsage {
@@ -131,7 +131,8 @@ pub fn filter_disks(disks: &Disks) -> Vec<&sysinfo::Disk> {
         let mount_point = disk.mount_point().to_string_lossy();
         if exclude_keywords
             .iter()
-            .any(|keyword| mount_point.contains(keyword)) {
+            .any(|keyword| mount_point.contains(keyword))
+        {
             continue;
         }
 

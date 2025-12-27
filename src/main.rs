@@ -80,7 +80,7 @@ async fn main() {
     #[cfg(target_os = "windows")]
     {
         if !args.disable_toast_notify {
-            use win_toast_notify::{WinToastNotify, Action, ActivationType};
+            use win_toast_notify::{Action, ActivationType, WinToastNotify};
             WinToastNotify::new()
                 .set_title("Komari-monitor-rs Is Running!")
                 .set_messages(vec![
@@ -179,7 +179,11 @@ async fn main() {
             let real_time = RealTimeInfo::build(
                 &sysinfo_sys,
                 &networks,
-                &mut network_saver_rx,
+                if args.disable_network_statistics {
+                    None
+                } else {
+                    Some(&mut network_saver_rx)
+                },
                 &disks,
                 args.fake,
             );
