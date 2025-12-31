@@ -1,43 +1,47 @@
 use crate::data_struct::{Connections, Network};
 use log::trace;
 use sysinfo::Networks;
-use tokio::sync::mpsc::Receiver;
+use std::sync::atomic::{AtomicI64, Ordering};
 
 #[cfg(target_os = "linux")]
 mod netlink;
 pub mod network_saver;
 
-static mut LAST_NETWORK: (u64, u64) = (0, 0);
+/// The offset is what we add to the current running total from the network interface
+/// to get the total for the current statistics cycle. It can be negative.
+/// It is managed by the `network_saver` module.
+static TRAFFIC_OFFSET_TX: AtomicI64 = AtomicI64::new(0);
+static TRAFFIC_OFFSET_RX: AtomicI64 = AtomicI64::new(0);
 
-pub static mut DURATION: f64 = 0.0;
+/// Updates the global traffic offset. This should only be called from the `network_saver` module.
+pub fn update_traffic_offset(offset_tx: i64, offset_rx: i64) {
+    TRAFFIC_OFFSET_TX.store(offset_tx, Ordering::Relaxed);
+    TRAFFIC_OFFSET_RX.store(offset_rx, Ordering::Relaxed);
+    trace!("Traffic offset updated to: tx={}, rx={}", offset_tx, offset_rx);
+}
+
 pub fn realtime_network(
     network: &Networks,
-    network_saver_rx: Option<&mut Receiver<(u64, u64)>>,
+    interval_ms: u64,
 ) -> Network {
     let (up, down, total_up, total_down) = filter_network(network);
 
-    if let Some(network_saver_rx) = network_saver_rx {
-        if let Ok(network_saver_rx) = network_saver_rx.try_recv() {
-            unsafe {
-                LAST_NETWORK = (network_saver_rx.0, network_saver_rx.1);
-            }
-        }
-    } else {
-        unsafe {
-            LAST_NETWORK = (total_up, total_down);
-        }
-    }
+    let offset_tx = TRAFFIC_OFFSET_TX.load(Ordering::Relaxed);
+    let offset_rx = TRAFFIC_OFFSET_RX.load(Ordering::Relaxed);
 
-    unsafe {
-        let network_info = Network {
-            up: (up as f64 / (DURATION / 1000.0)) as u64,
-            down: (down as f64 / (DURATION / 1000.0)) as u64,
-            total_up: LAST_NETWORK.0,
-            total_down: LAST_NETWORK.1,
-        };
-        trace!("REALTIME NETWORK successfully retrieved: {network_info:?}");
-        network_info
-    }
+    // Apply offset. Ensure result is not negative.
+    let cycle_total_up = (total_up as i64 + offset_tx).max(0) as u64;
+    let cycle_total_down = (total_down as i64 + offset_rx).max(0) as u64;
+
+    let interval_s = interval_ms as f64 / 1000.0;
+    let network_info = Network {
+        up: if interval_s > 0.0 { (up as f64 / interval_s) as u64 } else { 0 },
+        down: if interval_s > 0.0 { (down as f64 / interval_s) as u64 } else { 0 },
+        total_up: cycle_total_up,
+        total_down: cycle_total_down,
+    };
+    trace!("REALTIME NETWORK successfully retrieved: {network_info:?}");
+    network_info
 }
 
 #[cfg(target_os = "linux")]

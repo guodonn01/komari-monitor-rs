@@ -1,394 +1,479 @@
-use crate::command_parser::NetworkConfig;
-use crate::get_info::network::filter_network;
+use crate::command_parser::{NetworkConfig, TrafficPeriod};
+use crate::get_info::network::{filter_network, update_traffic_offset};
 use log::{error, info, warn};
-use miniserde::{Deserialize, Serialize};
-use std::cmp::PartialEq;
 use std::fs;
-use std::io::SeekFrom;
-use std::str::FromStr;
 use std::time::Duration;
 use sysinfo::Networks;
+use time::format_description::well_known::Rfc3339;
+use time::{Date, Month, OffsetDateTime, PrimitiveDateTime, Time, Weekday};
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
-#[derive(Serialize, Deserialize, PartialEq)]
+/// Represents the state of network statistics saved to disk
+#[derive(PartialEq, Clone, Debug)]
 struct NetworkInfo {
     config: NetworkConfig,
     boot_id: String,
-    source_tx: u64,
-    source_rx: u64,
-    latest_tx: u64,
-    latest_rx: u64,
-    counter: u32,
+    /// The total transmitted bytes accumulated in the current cycle.
+    cycle_total_tx: u64,
+    /// The total received bytes accumulated in the current cycle.
+    cycle_total_rx: u64,
+    /// Unix timestamp for the next scheduled reset.
+    next_reset_timestamp: i64,
+    offset_tx: i64,
+    offset_rx: i64,
 }
 
 impl NetworkInfo {
     pub fn encode(&self) -> String {
         let mut output = String::new();
-
+        // Helper macro
         macro_rules! append_line {
             ($key:expr, $value:expr) => {
                 output.push_str(&format!("{}={}\n", $key, $value));
             };
         }
 
+        // Config fields
         append_line!(
             "disable_network_statistics",
             self.config.disable_network_statistics
         );
-        append_line!("network_duration", self.config.network_duration);
         append_line!("network_interval", self.config.network_interval);
-        append_line!(
-            "network_interval_number",
-            self.config.network_interval_number
-        );
-        append_line!("network_save_path", self.config.network_save_path);
+        append_line!("network_save_path", &self.config.network_save_path);
+        append_line!("traffic_period", format!("{:?}", self.config.traffic_period));
+        append_line!("traffic_reset_day", &self.config.traffic_reset_day);
 
-        append_line!("boot_id", self.boot_id);
-        append_line!("source_tx", self.source_tx);
-        append_line!("source_rx", self.source_rx);
-        append_line!("latest_tx", self.latest_tx);
-        append_line!("latest_rx", self.latest_rx);
-        append_line!("counter", self.counter);
+        // NetworkInfo fields
+        append_line!("boot_id", &self.boot_id);
+        append_line!("cycle_total_tx", self.cycle_total_tx);
+        append_line!("cycle_total_rx", self.cycle_total_rx);
+        append_line!("next_reset_timestamp", self.next_reset_timestamp);
+        append_line!("offset_tx", self.offset_tx);
+        append_line!("offset_rx", self.offset_rx);
 
         output
     }
 
-    /// Decoder: Parses NetworkInfo from a String
     pub fn decode(input: &str) -> Result<Self, String> {
+        // For NetworkConfig
         let mut disable_network_statistics = None;
-        let mut network_duration = None;
         let mut network_interval = None;
-        let mut network_interval_number = None;
         let mut network_save_path = None;
-        let mut boot_id = None;
-        let mut source_tx = None;
-        let mut source_rx = None;
-        let mut latest_tx = None;
-        let mut latest_rx = None;
-        let mut counter = None;
+        let mut traffic_period = None;
+        let mut traffic_reset_day = None;
 
-        for (line_num, line) in input.lines().enumerate() {
+        // For NetworkInfo
+        let mut boot_id = None;
+        let mut cycle_total_tx = None;
+        let mut cycle_total_rx = None;
+        let mut next_reset_timestamp = None;
+        // Default to sentinel value if not found
+        let mut offset_tx = i64::MIN;
+        let mut offset_rx = i64::MIN;
+
+        for line in input.lines() {
             let line = line.trim();
             if line.is_empty() || line.starts_with('#') {
                 continue;
             }
 
-            let (key, value) = line.split_once('=').ok_or_else(|| {
-                format!("Line {}: Format error (expected key=value)", line_num + 1)
-            })?;
-
+            let (key, value) = line
+                .split_once('=')
+                .ok_or_else(|| format!("Format error: expected key=value, got '{}'", line))?;
             let key = key.trim();
             let value = value.trim();
 
-            let parse_err = |type_name: &str| {
-                format!(
-                    "Line {}: Invalid {} for key '{}'",
-                    line_num + 1,
-                    type_name,
-                    key
-                )
-            };
+            let parse_err = |type_name: &str| format!("Invalid {} for key '{}'", type_name, key);
 
             match key {
+                // Config
                 "disable_network_statistics" => {
                     disable_network_statistics =
-                        Some(FromStr::from_str(value).map_err(|_| parse_err("bool"))?)
-                }
-                "network_duration" => {
-                    network_duration = Some(value.parse().map_err(|_| parse_err("u32"))?)
+                        Some(value.parse::<bool>().map_err(|_| parse_err("bool"))?)
                 }
                 "network_interval" => {
-                    network_interval = Some(value.parse().map_err(|_| parse_err("u32"))?)
-                }
-                "network_interval_number" => {
-                    network_interval_number = Some(value.parse().map_err(|_| parse_err("u32"))?)
+                    network_interval = Some(value.parse::<u32>().map_err(|_| parse_err("u32"))?)
                 }
                 "network_save_path" => network_save_path = Some(value.to_string()),
+                "traffic_period" => {
+                    traffic_period = match value {
+                        "Week" => Some(TrafficPeriod::Week),
+                        "Month" => Some(TrafficPeriod::Month),
+                        "Year" => Some(TrafficPeriod::Year),
+                        _ => None,
+                    };
+                }
+                "traffic_reset_day" => traffic_reset_day = Some(value.to_string()),
+
+                // Info
                 "boot_id" => boot_id = Some(value.to_string()),
-                "source_tx" => source_tx = Some(value.parse().map_err(|_| parse_err("u64"))?),
-                "source_rx" => source_rx = Some(value.parse().map_err(|_| parse_err("u64"))?),
-                "latest_tx" => latest_tx = Some(value.parse().map_err(|_| parse_err("u64"))?),
-                "latest_rx" => latest_rx = Some(value.parse().map_err(|_| parse_err("u64"))?),
-                "counter" => counter = Some(value.parse().map_err(|_| parse_err("u32"))?),
-                _ => {}
+                "cycle_total_tx" => {
+                    cycle_total_tx = Some(value.parse::<u64>().map_err(|_| parse_err("u64"))?)
+                }
+                "cycle_total_rx" => {
+                    cycle_total_rx = Some(value.parse::<u64>().map_err(|_| parse_err("u64"))?)
+                }
+                "next_reset_timestamp" => {
+                    next_reset_timestamp =
+                        Some(value.parse::<i64>().map_err(|_| parse_err("i64"))?)
+                }
+                "offset_tx" => offset_tx = value.parse::<i64>().map_err(|_| parse_err("i64"))?,
+                "offset_rx" => offset_rx = value.parse::<i64>().map_err(|_| parse_err("i64"))?,
+                _ => {} // Ignore unknown keys
             }
         }
 
-        // Assemble the struct, check if required fields exist
+        // Assemble the struct
         Ok(NetworkInfo {
             config: NetworkConfig {
                 disable_network_statistics: disable_network_statistics
                     .ok_or("Missing field: disable_network_statistics")?,
-                network_duration: network_duration.ok_or("Missing field: network_duration")?,
                 network_interval: network_interval.ok_or("Missing field: network_interval")?,
-                network_interval_number: network_interval_number
-                    .ok_or("Missing field: network_interval_number")?,
-                network_save_path: network_save_path.ok_or("Missing field: network_save_path")?,
+                network_save_path: network_save_path
+                    .ok_or("Missing field: network_save_path")?,
+                traffic_period: traffic_period.unwrap_or(TrafficPeriod::Month),
+                traffic_reset_day: traffic_reset_day.unwrap_or_else(|| "1".to_string()),
             },
             boot_id: boot_id.ok_or("Missing field: boot_id")?,
-            source_tx: source_tx.ok_or("Missing field: source_tx")?,
-            source_rx: source_rx.ok_or("Missing field: source_rx")?,
-            latest_tx: latest_tx.ok_or("Missing field: latest_tx")?,
-            latest_rx: latest_rx.ok_or("Missing field: latest_rx")?,
-            counter: counter.ok_or("Missing field: counter")?,
+            cycle_total_tx: cycle_total_tx.ok_or("Missing field: cycle_total_tx")?,
+            cycle_total_rx: cycle_total_rx.ok_or("Missing field: cycle_total_rx")?,
+            next_reset_timestamp: next_reset_timestamp
+                .ok_or("Missing field: next_reset_timestamp")?,
+            offset_tx,
+            offset_rx,
         })
     }
 }
 
-async fn get_or_init_latest_network_info(
+/// Main entry point for the network statistics persistence thread.
+pub async fn network_saver(network_config: &NetworkConfig) {
+    if network_config.disable_network_statistics {
+        return;
+    }
+
+    let mut networks = Networks::new_with_refreshed_list();
+
+    loop {
+        // Initialize state, handles file creation, migration, and reset logic
+        let (mut file, mut network_info) =
+            match initialize_network_state_and_offset(network_config, &mut networks).await {
+                Ok(state) => state,
+                Err(e) => {
+                    error!("Failed to initialize network statistics: {}. This feature will be disabled.", e);
+                    return;
+                }
+            };
+
+        // The offset for the current session is now stored in the network_info struct.
+        let offset_tx = network_info.offset_tx;
+        let offset_rx = network_info.offset_rx;
+        info!(
+            "Network statistics cycle started. Next reset on: {}",
+            OffsetDateTime::from_unix_timestamp(network_info.next_reset_timestamp)
+                .unwrap()
+                .format(&Rfc3339)
+                .unwrap()
+        );
+
+        // Main loop for the current cycle
+        loop {
+            tokio::time::sleep(Duration::from_secs(
+                network_config.network_interval as u64,
+            ))
+            .await;
+
+            let now = OffsetDateTime::now_utc().unix_timestamp();
+            if now >= network_info.next_reset_timestamp {
+                info!("Network statistics cycle ended. Resetting...");
+                break; // Break inner loop to re-initialize
+            }
+
+            networks.refresh(true);
+            let (_, _, current_total_tx, current_total_rx) = filter_network(&networks);
+
+            // Update the live total traffic value using the constant offset for this cycle
+            network_info.cycle_total_tx = (current_total_tx as i64 + offset_tx).max(0) as u64;
+            network_info.cycle_total_rx = (current_total_rx as i64 + offset_rx).max(0) as u64;
+
+            // Save the updated state to the file
+            if let Err(e) = save_network_info(&mut file, &network_info).await {
+                error!("Failed to save network statistics file: {}", e);
+                // Continue, maybe it's a temporary issue
+            } else {
+                info!("Network statistics saved.");
+            }
+        }
+    }
+}
+
+/// Handles all startup logic: reading/creating the state file, migrating old formats,
+/// handling reboots vs. restarts, and calculating the initial traffic offset.
+async fn initialize_network_state_and_offset(
     network_config: &NetworkConfig,
+    networks: &mut Networks,
 ) -> Result<(File, NetworkInfo), String> {
     let mut file = match OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
-        .truncate(false)
         .open(&network_config.network_save_path)
         .await
     {
-        Ok(file) => file,
-        Err(e) => {
-            return Err(format!("Failed to open network traffic info file: {e}"));
-        }
-    };
-
-    let new_boot_id = if cfg!(target_os = "linux") {
-        match fs::read_to_string("/proc/sys/kernel/random/boot_id") {
-            Ok(content) => content.trim().to_string(),
-            Err(e) => {
-                warn!("Failed to read boot_id: {}", e);
-                String::new()
-            }
-        }
-    } else {
-        String::new()
+        Ok(f) => f,
+        Err(e) => return Err(format!("Failed to open network state file: {e}")),
     };
 
     let mut raw_data = String::new();
-    file.read_to_string(&mut raw_data)
-        .await
-        .map_err(|e| format!("Failed to read network traffic info file: {e}"))?;
+    file.read_to_string(&mut raw_data).await.map_err(|e| format!("Failed to read network state file: {e}"))?;
 
-    let raw_network_info = if raw_data.is_empty() {
-        let network_info = NetworkInfo {
+    let now = OffsetDateTime::now_utc();
+    let new_boot_id = get_boot_id();
+
+    let mut network_info = if raw_data.is_empty() {
+        info!("Creating new network statistics file.");
+        let next_reset_timestamp = calculate_next_reset_timestamp(network_config, now)?;
+        NetworkInfo {
             config: network_config.clone(),
             boot_id: new_boot_id.clone(),
-            source_tx: 0,
-            source_rx: 0,
-            latest_tx: 0,
-            latest_rx: 0,
-            counter: network_config.network_duration / network_config.network_interval,
-        };
-        rewrite_network_info_file(&mut file, network_info.encode())
-            .await
-            .map_err(|e| format!("Failed to write network traffic info file: {e}"))?;
-        info!(
-            "Network traffic info file is empty, possibly first run or save path changed, created new file"
-        );
-        network_info
+            cycle_total_tx: 0,
+            cycle_total_rx: 0,
+            next_reset_timestamp,
+            offset_tx: i64::MIN + 2,    // initial value for tx
+            offset_rx: i64::MIN + 2,
+        }
+    } else if let Ok(info) = NetworkInfo::decode(&raw_data) {
+        info!("Loaded network statistics from file.");
+        info
     } else {
-        let raw_network_info = NetworkInfo::decode(&raw_data);
+        warn!("Network statistics file is corrupted or in an old format. Creating a new one.");
+        let (old_tx, old_rx) =
+            if let Some((tx, rx)) = parse_old_format_for_migration(&raw_data) {
+                info!("Successfully migrated traffic data from old format.");
+                (tx, rx)
+            } else {
+                (0, 0)
+            };
+        let next_reset_timestamp = calculate_next_reset_timestamp(network_config, now)?;
+        NetworkInfo {
+            config: network_config.clone(),
+            boot_id: new_boot_id.clone(),
+            cycle_total_tx: old_tx,
+            cycle_total_rx: old_rx,
+            next_reset_timestamp,
+            offset_tx: i64::MIN + 2,
+            offset_rx: i64::MIN + 2,
+        }
+    };
 
-        if let Err(e) = &raw_network_info {
-            warn!(
-                "Failed to parse network traffic info file: {}. Will recreate the file in 3 seconds.",
-                e
-            );
-            tokio::time::sleep(Duration::from_secs(3)).await;
+    // 1. Check for configuration change
+    if &network_info.config != network_config {
+        warn!("Network configuration changed. Resetting statistics.");
+        network_info.next_reset_timestamp = calculate_next_reset_timestamp(network_config, now)?;
+        network_info.config = network_config.clone();
+    }
 
-            drop(file);
-            if let Err(e) = tokio::fs::remove_file(&network_config.network_save_path).await {
+    // 2. Check if the cycle has reset since the last run
+    if now.unix_timestamp() >= network_info.next_reset_timestamp {
+        info!("New statistics cycle detected. Resetting totals.");
+        network_info.cycle_total_tx = 0;
+        network_info.cycle_total_rx = 0;
+        network_info.next_reset_timestamp = calculate_next_reset_timestamp(network_config, now)?;
+        network_info.offset_tx = i64::MIN;
+        network_info.offset_rx = i64::MIN;
+    }
+
+    // 3. Handle reboot: if boot ID changed, invalidate the offset from the file.
+    let is_reboot =
+        cfg!(target_os = "linux") && !new_boot_id.is_empty() && network_info.boot_id != new_boot_id;
+    if is_reboot {
+        info!("System reboot detected. Invalidating saved offset.");
+        network_info.offset_tx = i64::MIN + 1;
+        network_info.offset_rx = i64::MIN + 1;
+    }
+    network_info.boot_id = new_boot_id;
+
+    // 4. Calculate and set the initial offset for this session
+    networks.refresh(true);
+    let (_, _, current_total_tx, current_total_rx) = filter_network(networks);
+
+    if network_info.offset_tx == i64::MIN {
+        // Offset is invalid (due to reboot, new cycle, or new file) and must be recalculated.
+        let new_offset_tx = (network_info.cycle_total_tx as i64) - (current_total_tx as i64);
+        let new_offset_rx = (network_info.cycle_total_rx as i64) - (current_total_rx as i64);
+        info!("Recalculated network offset: tx={}, rx={}", new_offset_tx, new_offset_rx);
+        network_info.offset_tx = new_offset_tx;
+        network_info.offset_rx = new_offset_rx;
+    } else if network_info.offset_tx == (i64::MIN + 1) {
+        network_info.offset_tx = network_info.cycle_total_tx as i64;
+        network_info.offset_rx = network_info.cycle_total_rx as i64;
+        info!("reboot in one statistics cycle, network offset: tx={}, rx={}", network_info.offset_tx, network_info.offset_rx);
+    } else if network_info.offset_tx == (i64::MIN + 2) {
+        if network_info.cycle_total_tx == 0 && network_info.cycle_total_rx == 0 { 
+            network_info.offset_tx = 0;
+            network_info.offset_rx = 0;
+        } else {
+            network_info.offset_tx = (network_info.cycle_total_tx as i64) - (current_total_tx as i64);
+            network_info.offset_rx = (network_info.cycle_total_rx as i64) - (current_total_rx as i64);
+        }
+        info!("initial statistics cycle, network offset: tx={}, rx={}", network_info.offset_tx, network_info.offset_rx);
+    } else {
+        // Offset from file is valid (program restart without reboot). Use it directly.
+        info!("Using existing network offset from file: tx={}, rx={}", network_info.offset_tx, network_info.offset_rx);
+    }
+
+    update_traffic_offset(network_info.offset_tx, network_info.offset_rx);
+
+    // 5. Save the potentially updated state (new boot_id, new cycle, and new offset)
+    save_network_info(&mut file, &network_info)
+        .await
+        .map_err(|e| format!("Failed to save initial network state: {e}"))?;
+
+    Ok((file, network_info))
+}
+
+/// Calculates the timestamp of the next reset event based on the configuration.
+fn calculate_next_reset_timestamp(
+    config: &NetworkConfig,
+    now: OffsetDateTime,
+) -> Result<i64, String> {
+    let period = &config.traffic_period;
+    let reset_day_str = &config.traffic_reset_day;
+
+    let mut next_reset_date = now.date();
+
+    match period {
+        TrafficPeriod::Week => {
+            let target_weekday = match reset_day_str.to_lowercase().as_str() {
+                "mon" | "1" => Weekday::Monday,
+                "tue" | "2" => Weekday::Tuesday,
+                "wed" | "3" => Weekday::Wednesday,
+                "thu" | "4" => Weekday::Thursday,
+                "fri" | "5" => Weekday::Friday,
+                "sat" | "6" => Weekday::Saturday,
+                "sun" | "7" => Weekday::Sunday,
+                _ => {
+                    return Err(format!(
+                        "Invalid weekday '{}', must be 1-7 or mon-sun",
+                        reset_day_str
+                    ))
+                }
+            };
+
+            let mut days_to_add =
+                target_weekday.number_from_monday() as i64 - now.weekday().number_from_monday() as i64;
+            if days_to_add <= 0 {
+                days_to_add += 7;
+            }
+            next_reset_date = next_reset_date + time::Duration::days(days_to_add);
+        }
+        TrafficPeriod::Month => {
+            let reset_day = reset_day_str
+                .parse::<u8>()
+                .map_err(|_| format!("Invalid day of month '{}', must be a number 1-31", reset_day_str))?;
+            if !(1..=31).contains(&reset_day) {
+                return Err(format!("Invalid day of month '{}', must be 1-31", reset_day));
+            }
+
+            let mut target_date = now.date();
+            let max_day_current_month = days_in_month(target_date.year(), target_date.month());
+            let target_day = reset_day.min(max_day_current_month);
+
+            if now.day() >= target_day {
+                let (year, month) = if target_date.month() == Month::December {
+                    (target_date.year() + 1, Month::January)
+                } else {
+                    (target_date.year(), target_date.month().next())
+                };
+                target_date = Date::from_calendar_date(year, month, 1).unwrap();
+            }
+
+            let max_day_target_month = days_in_month(target_date.year(), target_date.month());
+            let final_day = reset_day.min(max_day_target_month);
+            next_reset_date = target_date.replace_day(final_day).unwrap();
+        }
+        TrafficPeriod::Year => {
+            let parts: Vec<&str> = reset_day_str.split('/').collect();
+            if parts.len() != 2 {
                 return Err(format!(
-                    "Failed to remove corrupted network traffic info file: {e}"
+                    "Invalid date format for year reset '{}', expected 'MM/DD'",
+                    reset_day_str
                 ));
             }
+            let month = parts[0].parse::<u8>().map_err(|_| format!("Invalid month in '{}'", reset_day_str))?;
+            let day = parts[1].parse::<u8>().map_err(|_| format!("Invalid day in '{}'", reset_day_str))?;
+            let month_enum = Month::try_from(month).map_err(|_| format!("Invalid month value '{}', must be 1-12", month))?;
 
-            file = reopen_network_file(&network_config.network_save_path).await?;
+            let mut next_year = now.year();
+            let reset_date_this_year = Date::from_calendar_date(next_year, month_enum, day)
+                .map_err(|e| format!("Invalid date '{}/{}': {}", month, day, e))?;
 
-            let network_info = NetworkInfo {
-                config: network_config.clone(),
-                boot_id: new_boot_id.clone(),
-                source_tx: 0,
-                source_rx: 0,
-                latest_tx: 0,
-                latest_rx: 0,
-                counter: network_config.network_duration / network_config.network_interval,
-            };
-            rewrite_network_info_file(&mut file, network_info.encode())
-                .await
-                .map_err(|e| format!("Failed to write network traffic info file: {e}"))?;
-            info!("Recreated network traffic info file");
-            network_info
-        } else {
-            let raw_network_info = raw_network_info?;
-
-            if &raw_network_info.config != network_config {
-                warn!(
-                    "Network traffic info file configuration does not match, overwriting file and resetting statistics in 3 seconds. Press Ctrl+C to stop."
-                );
-                tokio::time::sleep(Duration::from_secs(3)).await;
-                warn!("Starting to clear network traffic info");
-                let network_info = NetworkInfo {
-                    config: network_config.clone(),
-                    boot_id: new_boot_id.clone(),
-                    source_tx: 0,
-                    source_rx: 0,
-                    latest_tx: 0,
-                    latest_rx: 0,
-                    counter: network_config.network_duration / network_config.network_interval,
-                };
-                rewrite_network_info_file(&mut file, network_info.encode())
-                    .await
-                    .map_err(|e| format!("Failed to write network traffic info file: {e}"))?;
-                info!("Network traffic info cleared");
-                network_info
-            } else {
-                raw_network_info
+            if now.date() >= reset_date_this_year {
+                next_year += 1;
             }
+            next_reset_date = Date::from_calendar_date(next_year, month_enum, day).map_err(|e| {
+                format!("Invalid date '{}/{}' for year {}: {}", month, day, next_year, e)
+            })?;
         }
-    };
-
-    if raw_network_info.counter == 0 {
-        return Ok((file, raw_network_info));
     }
 
-    let new_network_info = if cfg!(target_os = "linux") && !new_boot_id.is_empty() {
-        if raw_network_info.boot_id != new_boot_id {
-            NetworkInfo {
-                config: raw_network_info.config,
-                boot_id: new_boot_id,
-                source_tx: raw_network_info.source_tx + raw_network_info.latest_tx,
-                source_rx: raw_network_info.source_rx + raw_network_info.latest_rx,
-                latest_tx: 0,
-                latest_rx: 0,
-                counter: raw_network_info.counter - 1,
-            }
-        } else {
-            NetworkInfo {
-                counter: raw_network_info.counter - 1,
-                ..raw_network_info
-            }
-        }
-    } else {
-        NetworkInfo {
-            config: raw_network_info.config,
-            boot_id: new_boot_id,
-            source_tx: raw_network_info.source_tx + raw_network_info.latest_tx,
-            source_rx: raw_network_info.source_rx + raw_network_info.latest_rx,
-            latest_tx: 0,
-            latest_rx: 0,
-            counter: raw_network_info.counter - 1,
-        }
-    };
-
-    rewrite_network_info_file(&mut file, new_network_info.encode())
-        .await
-        .map_err(|e| format!("Failed to write network traffic info file: {e}"))?;
-
-    Ok((file, new_network_info))
+    let next_reset_datetime = PrimitiveDateTime::new(next_reset_date, Time::MIDNIGHT);
+    Ok(next_reset_datetime.assume_offset(now.offset()).unix_timestamp())
 }
 
-pub async fn network_saver(
-    tx: tokio::sync::mpsc::Sender<(u64, u64)>,
-    network_config: &NetworkConfig,
-) {
-    if network_config.disable_network_statistics {
-        return;
-    }
-
-    loop {
-        let (mut file, mut network_info) = match get_or_init_latest_network_info(&network_config)
-            .await
-        {
-            Ok(n) => n,
-            Err(e) => {
-                warn!("An error occurred while getting or initing network traffic info: {e}.");
-                warn!(
-                    "This will fallback to statistics only showing network interface traffic since the current startup, equivalent to `--disable-network-statistics`."
-                );
-                return;
-            }
-        };
-
-        let mut networks = Networks::new_with_refreshed_list();
-
-        // Add a counter to accumulate memory update times
-        let mut memory_update_count = 0;
-
-        loop {
-            networks.refresh(true);
-            let (_, _, total_up, total_down) = filter_network(&networks);
-
-            network_info = NetworkInfo {
-                latest_tx: total_up,
-                latest_rx: total_down,
-                counter: network_info.counter - 1,
-                ..network_info
-            };
-
-            memory_update_count += 1;
-
-            if memory_update_count >= network_config.network_interval_number
-                || network_info.counter == 0
-            {
-                if network_info.counter == 0 {
-                    if let Err(e) = rewrite_network_info_file(&mut file, String::new()).await {
-                        error!("Failed to write network traffic info file: {e}");
-                        break;
-                    }
-                    info!("Finished one cycle of traffic statistics, data cleared");
-                    break;
-                } else {
-                    if let Err(e) =
-                        rewrite_network_info_file(&mut file, network_info.encode()).await
-                    {
-                        error!("Failed to write network traffic info file: {e}");
-                        continue;
-                    }
-                    memory_update_count = 0;
-                }
-            }
-
-            if let Err(e) = tx
-                .send((
-                    network_info.latest_tx + network_info.source_tx,
-                    network_info.latest_rx + network_info.source_rx,
-                ))
-                .await
-            {
-                error!("Failed to send traffic data: {e}");
-                continue;
-            }
-
-            tokio::time::sleep(Duration::from_secs(
-                network_info.config.network_interval as u64,
-            ))
-            .await;
-        }
-    }
+/// Helper to get the number of days in a given month and year.
+fn days_in_month(year: i32, month: Month) -> u8 {
+    let next_month = month.next();
+    let next_year = if next_month == Month::January { year + 1 } else { year };
+    let last_day = Date::from_calendar_date(next_year, next_month, 1).unwrap().previous_day().unwrap();
+    last_day.day()
 }
 
-async fn rewrite_network_info_file(
-    file: &mut File,
-    string: String,
-) -> Result<(), Box<dyn std::error::Error>> {
+/// Saves the NetworkInfo struct to the given file as a JSON string.
+async fn save_network_info(file: &mut File, info: &NetworkInfo) -> Result<(), std::io::Error> {
+    let content = info.encode();
+    file.rewind().await?;
     file.set_len(0).await?;
-    file.seek(SeekFrom::Start(0)).await?;
-    file.write_all(string.as_bytes()).await?;
+    file.write_all(content.as_bytes()).await?;
     Ok(())
 }
 
-async fn reopen_network_file(path: &str) -> Result<File, String> {
-    match OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(path)
-        .await
-    {
-        Ok(file) => Ok(file),
-        Err(e) => Err(format!("Failed to reopen network traffic info file: {e}")),
+/// Gets the boot ID from the kernel. Returns an empty string on non-Linux or on error.
+fn get_boot_id() -> String {
+    if cfg!(target_os = "linux") {
+        fs::read_to_string("/proc/sys/kernel/random/boot_id")
+            .map(|s| s.trim().to_string())
+            .unwrap_or_else(|e| {
+                warn!("Failed to read boot_id: {}", e);
+                String::new()
+            })
+    } else {
+        String::new()
+    }
+}
+
+/// Tries to parse the old key=value format to migrate traffic totals.
+fn parse_old_format_for_migration(input: &str) -> Option<(u64, u64)> {
+    let mut source_tx: Option<u64> = None;
+    let mut source_rx: Option<u64> = None;
+
+    for line in input.lines() {
+        if let Some((key, value)) = line.split_once('=') {
+            let key = key.trim();
+            let value = value.trim();
+
+            match key {
+                "source_tx" => source_tx = value.parse().ok(),
+                "source_rx" => source_rx = value.parse().ok(),
+                _ => {}
+            }
+        }
+    }
+
+    // We need at least source_tx and source_rx. latest_tx/rx can be 0 if not present.
+    if let (Some(stx), Some(srx)) = (source_tx, source_rx) {
+        Some((stx , srx))
+    } else {
+        None
     }
 }

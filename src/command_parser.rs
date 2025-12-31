@@ -1,5 +1,4 @@
 use log::{error, info};
-use miniserde::{Deserialize, Serialize};
 use palc::{Parser, ValueEnum};
 use std::fmt::Display;
 use std::path::PathBuf;
@@ -71,38 +70,38 @@ pub struct Args {
     #[arg(long, default_value_t = false)]
     pub disable_network_statistics: bool,
 
-    /// Network Statistics Duration (s)
-    #[arg(long, default_value_t = 864000)]
-    pub network_duration: u32,
-
-    /// Network Statistics Interval (s)
+    /// Network Statistics Save Interval (s)
     #[arg(long, default_value_t = 10)]
     pub network_interval: u32,
-
-    /// Network Statistics Save to Disk Interval Count (s)
-    #[arg(long, default_value_t = 10)]
-    pub network_interval_number: u32,
 
     /// Network Statistics Save Path
     #[arg(long)]
     pub network_save_path: Option<String>,
+
+    /// Network statistics reset period.
+    #[arg(long, value_enum, default_value_t = traffic_period())]
+    pub traffic_period: TrafficPeriod,
+
+    #[doc = "Network statistics reset day.
+    \t    For 'week', accepts 1-7 (Mon-Sun) or names like 'mon', 'tue'.
+    \t    For 'month', accepts a day number like 1-31.
+    \t    For 'year', accepts a date in 'MM/DD' format, e.g., '12/31'."]
+    #[arg(long, default_value_t = String::from("1"))]
+    pub traffic_reset_day: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NetworkConfig {
     pub disable_network_statistics: bool,
-    pub network_duration: u32,
     pub network_interval: u32,
-    pub network_interval_number: u32,
     pub network_save_path: String,
+    pub traffic_period: TrafficPeriod,
+    pub traffic_reset_day: String,
 }
 
 impl Args {
     pub fn par() -> Self {
         let mut args = Self::parse();
-        unsafe {
-            crate::get_info::network::DURATION = args.realtime_info_interval as f64;
-        }
         if args.terminal_entry == "default" {
             args.terminal_entry = {
                 if cfg!(windows) {
@@ -176,10 +175,10 @@ impl Args {
 
         NetworkConfig {
             disable_network_statistics,
-            network_duration: self.network_duration,
             network_interval: self.network_interval,
-            network_interval_number: self.network_interval_number,
             network_save_path: path,
+            traffic_period: self.traffic_period.clone(),
+            traffic_reset_day: self.traffic_reset_day.clone(),
         }
     }
 }
@@ -247,15 +246,13 @@ impl Display for Args {
         )?;
 
         if !self.disable_network_statistics {
-            writeln!(f, "    Duration: {} s", self.network_duration)?;
-            writeln!(f, "    Interval: {} s", self.network_interval)?;
-            writeln!(
-                f,
-                "    Save Interval: {} cycles",
-                self.network_interval_number
-            )?;
+            writeln!(f, "    Reset Period: {:?}", self.traffic_period)?;
+            writeln!(f, "    Reset Day: {}", self.traffic_reset_day)?;
+            writeln!(f, "    Save Interval: {} s", self.network_interval)?;
             if let Some(save_path) = &self.network_save_path {
                 writeln!(f, "    Save Path: {}", save_path)?;
+            } else {
+                writeln!(f, "    Save Path: auto-determined")?;
             }
         }
 
@@ -277,6 +274,16 @@ fn ip_provider() -> IpProvider {
 pub enum IpProvider {
     Cloudflare,
     Ipinfo,
+}
+
+#[derive(ValueEnum, Debug, Clone, PartialEq)]
+pub enum TrafficPeriod {
+    Week,
+    Month,
+    Year,
+}
+fn traffic_period() -> TrafficPeriod {
+    TrafficPeriod::Month
 }
 
 #[derive(Debug, Clone, ValueEnum)]

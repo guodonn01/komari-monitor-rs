@@ -24,7 +24,6 @@ use std::time::Duration;
 use sysinfo::{CpuRefreshKind, DiskRefreshKind, Disks, MemoryRefreshKind, Networks, RefreshKind};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
-use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::sleep;
 use tokio_tungstenite::tungstenite::{Message, Utf8Bytes};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
@@ -105,12 +104,9 @@ async fn main() {
         }
     }
 
-    let (network_saver_tx, mut network_saver_rx): (Sender<(u64, u64)>, Receiver<(u64, u64)>) =
-        tokio::sync::mpsc::channel(15);
-
     if !network_config.disable_network_statistics {
         let _listener = tokio::spawn(async move {
-            network_saver(network_saver_tx, &network_config).await;
+            network_saver(&network_config).await;
         });
     } else {
         info!(
@@ -179,13 +175,9 @@ async fn main() {
             let real_time = RealTimeInfo::build(
                 &sysinfo_sys,
                 &networks,
-                if args.disable_network_statistics {
-                    None
-                } else {
-                    Some(&mut network_saver_rx)
-                },
                 &disks,
                 args.fake,
+                args.realtime_info_interval,
             );
 
             let json = json::to_string(&real_time);
