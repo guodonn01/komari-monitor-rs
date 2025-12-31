@@ -57,7 +57,7 @@ CONNS: TCP: 12 | UDP: 4
 - `--network-interval-number`: 周期流量统计 的保存到磁盘间隔次数，默认 6, 即一分钟落盘一次。  
 - `--network-duration`: 仅仅用于 fixed 模式, 周期流量统计 的统计长度，单位 sec，默认 864000 (10 Days).  
 - `--traffic-period`: 仅仅用于 natural 模式，流量统计清零的周期长度，可选: week/month/year，默认 month (以自然月为周期清零总流量)   
-- `--traffic-reset-day`: 仅仅用于 natural 模式，流量统计重置的日期, 默认在每月1号清零。
+- `--traffic-reset-day`: 仅仅用于 natural 模式，流量统计重置的日期, 默认在每月1号清零。  
               清零周期是一周时，可选 1...7, 对应在周1..7重置。  
               清零周期是一月时，可选 1...31, 对应在下月的1...31日重置。  
               清零周期是一年时，格式为12/31，对应在下年的12/31日重置。  
@@ -149,20 +149,38 @@ Options:
           Disable Network Statistics
           [default: false]
 
-      --network-duration <NETWORK_DURATION>
-          Network Statistics Duration (s)
-          [default: 864000]
-
-      --network-interval <NETWORK_INTERVAL>
-          Network Statistics Interval (s)
-          [default: 10]
-
-      --network-interval-number <NETWORK_INTERVAL_NUMBER>
-          Network Statistics Save to Disk Interval Count (s)
-          [default: 10]
+      --network-statistics-mode <NETWORK_STATISTICS_MODE>
+          Network statistics calculation mode.
+          'fixed' is based on a fixed duration, such as 10 days
+          'natural' is based on natural datetime
+          [default: fixed]
 
       --network-save-path <NETWORK_SAVE_PATH>
           Network Statistics Save Path
+
+      --network-interval <NETWORK_INTERVAL>
+          Network Statistics Save Interval (s)
+          [default: 10]
+
+      --network-duration <NETWORK_DURATION>
+          For 'fixed' mode only
+          Duration for one cycle of network statistics in seconds.
+          [default: 864000]
+
+      --network-interval-number <NETWORK_INTERVAL_NUMBER>
+          Number of intervals to save network statistics to disk.
+          [default: 6]
+
+      --traffic-period <TRAFFIC_PERIOD>
+          Network statistics reset period, for 'natural' mode only.
+          [default: month]
+
+      --traffic-reset-day <TRAFFIC_RESET_DAY>
+          Network statistics reset day, for 'natural' mode only.
+            For 'week', accepts 1-7 (Mon-Sun) or names like 'mon', 'tue'.
+            For 'month', accepts a day number like 1-31.
+            For 'year', accepts a date in 'MM/DD' format, e.g., '12/31'.
+          [default: 1]
 ```
 
 必须设置 `--http-server` / `--token`
