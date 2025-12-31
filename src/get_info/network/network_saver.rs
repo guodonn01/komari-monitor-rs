@@ -1,4 +1,4 @@
-use crate::command_parser::{NetworkConfig, TrafficPeriod};
+use crate::command_parser::{NetworkConfig, NetworkStatisticsMode, TrafficPeriod};
 use crate::get_info::network::{filter_network, update_traffic_offset};
 use log::{error, info, warn};
 use std::fs;
@@ -43,6 +43,15 @@ impl NetworkInfo {
         append_line!("network_save_path", &self.config.network_save_path);
         append_line!("traffic_period", format!("{:?}", self.config.traffic_period));
         append_line!("traffic_reset_day", &self.config.traffic_reset_day);
+        append_line!(
+            "network_statistics_mode",
+            format!("{:?}", self.config.network_statistics_mode)
+        );
+        append_line!("network_duration", self.config.network_duration);
+        append_line!(
+            "network_interval_number",
+            self.config.network_interval_number
+        );
 
         // NetworkInfo fields
         append_line!("boot_id", &self.boot_id);
@@ -62,6 +71,9 @@ impl NetworkInfo {
         let mut network_save_path = None;
         let mut traffic_period = None;
         let mut traffic_reset_day = None;
+        let mut network_statistics_mode = None;
+        let mut network_duration = None;
+        let mut network_interval_number = None;
 
         // For NetworkInfo
         let mut boot_id = None;
@@ -105,6 +117,20 @@ impl NetworkInfo {
                     };
                 }
                 "traffic_reset_day" => traffic_reset_day = Some(value.to_string()),
+                "network_statistics_mode" => {
+                    network_statistics_mode = match value {
+                        "Natural" => Some(NetworkStatisticsMode::Natural),
+                        "Fixed" => Some(NetworkStatisticsMode::Fixed),
+                        _ => None,
+                    };
+                }
+                "network_duration" => {
+                    network_duration = Some(value.parse::<u32>().map_err(|_| parse_err("u32"))?)
+                }
+                "network_interval_number" => {
+                    network_interval_number =
+                        Some(value.parse::<u32>().map_err(|_| parse_err("u32"))?)
+                }
 
                 // Info
                 "boot_id" => boot_id = Some(value.to_string()),
@@ -134,6 +160,10 @@ impl NetworkInfo {
                     .ok_or("Missing field: network_save_path")?,
                 traffic_period: traffic_period.unwrap_or(TrafficPeriod::Month),
                 traffic_reset_day: traffic_reset_day.unwrap_or_else(|| "1".to_string()),
+                network_statistics_mode: network_statistics_mode
+                    .unwrap_or(NetworkStatisticsMode::Fixed),
+                network_duration: network_duration.unwrap_or(864_000),
+                network_interval_number: network_interval_number.unwrap_or(6),
             },
             boot_id: boot_id.ok_or("Missing field: boot_id")?,
             cycle_total_tx: cycle_total_tx.ok_or("Missing field: cycle_total_tx")?,
@@ -176,6 +206,9 @@ pub async fn network_saver(network_config: &NetworkConfig) {
                 .unwrap()
         );
 
+        // Add a counter to accumulate memory update times
+        let mut memory_update_count = 0;
+
         // Main loop for the current cycle
         loop {
             tokio::time::sleep(Duration::from_secs(
@@ -196,13 +229,17 @@ pub async fn network_saver(network_config: &NetworkConfig) {
             network_info.cycle_total_tx = (current_total_tx as i64 + offset_tx).max(0) as u64;
             network_info.cycle_total_rx = (current_total_rx as i64 + offset_rx).max(0) as u64;
 
-            // Save the updated state to the file
-            if let Err(e) = save_network_info(&mut file, &network_info).await {
-                error!("Failed to save network statistics file: {}", e);
-                // Continue, maybe it's a temporary issue
-            } else {
-                info!("Network statistics saved.");
-            }
+            memory_update_count += 1;
+            if memory_update_count >= network_config.network_interval_number {
+                // Save the updated state to the file
+                if let Err(e) = save_network_info(&mut file, &network_info).await {
+                    error!("Failed to save network statistics file: {}", e);
+                    // Continue, maybe it's a temporary issue
+                } else {
+                    info!("Network statistics saved.");
+                }
+                memory_update_count = 0;
+            }      
         }
     }
 }
@@ -337,6 +374,12 @@ fn calculate_next_reset_timestamp(
     config: &NetworkConfig,
     now: OffsetDateTime,
 ) -> Result<i64, String> {
+    // for fixed mode
+    if config.network_statistics_mode == NetworkStatisticsMode::Fixed {
+        return Ok(now.unix_timestamp() + i64::from(config.network_duration));
+    }
+
+    // for natural mode
     let period = &config.traffic_period;
     let reset_day_str = &config.traffic_reset_day;
 

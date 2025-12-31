@@ -1,5 +1,6 @@
 use log::{error, info};
 use palc::{Parser, ValueEnum};
+use miniserde::{Deserialize, Serialize};
 use std::fmt::Display;
 use std::path::PathBuf;
 use std::{env, fs};
@@ -70,19 +71,34 @@ pub struct Args {
     #[arg(long, default_value_t = false)]
     pub disable_network_statistics: bool,
 
-    /// Network Statistics Save Interval (s)
-    #[arg(long, default_value_t = 10)]
-    pub network_interval: u32,
+    #[doc = "Network statistics calculation mode.
+    \t  'fixed' is based on a fixed duration, such as 10 days
+    \t  'natural' is based on natural datetime"]
+    #[arg(long, value_enum, default_value_t = network_statistics_mode())]
+    pub network_statistics_mode: NetworkStatisticsMode,
 
     /// Network Statistics Save Path
     #[arg(long)]
     pub network_save_path: Option<String>,
 
-    /// Network statistics reset period.
+    /// Network Statistics Save Interval (s)
+    #[arg(long, default_value_t = 10)]
+    pub network_interval: u32,
+
+    #[doc = "For 'fixed' mode only
+    \t  Duration for one cycle of network statistics in seconds."]
+    #[arg(long, default_value_t = 864000)] // 10 days
+    pub network_duration: u32,
+    
+    /// Number of intervals to save network statistics to disk.
+    #[arg(long, default_value_t = 6)]
+    pub network_interval_number: u32,
+
+    /// Network statistics reset period, for 'natural' mode only.
     #[arg(long, value_enum, default_value_t = traffic_period())]
     pub traffic_period: TrafficPeriod,
 
-    #[doc = "Network statistics reset day.
+    #[doc = "Network statistics reset day, for 'natural' mode only.
     \t    For 'week', accepts 1-7 (Mon-Sun) or names like 'mon', 'tue'.
     \t    For 'month', accepts a day number like 1-31.
     \t    For 'year', accepts a date in 'MM/DD' format, e.g., '12/31'."]
@@ -90,13 +106,16 @@ pub struct Args {
     pub traffic_reset_day: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct NetworkConfig {
     pub disable_network_statistics: bool,
     pub network_interval: u32,
     pub network_save_path: String,
     pub traffic_period: TrafficPeriod,
     pub traffic_reset_day: String,
+    pub network_statistics_mode: NetworkStatisticsMode,
+    pub network_duration: u32,
+    pub network_interval_number: u32,
 }
 
 impl Args {
@@ -179,6 +198,9 @@ impl Args {
             network_save_path: path,
             traffic_period: self.traffic_period.clone(),
             traffic_reset_day: self.traffic_reset_day.clone(),
+            network_statistics_mode: self.network_statistics_mode.clone(),
+            network_duration: self.network_duration,
+            network_interval_number: self.network_interval_number,
         }
     }
 }
@@ -276,12 +298,22 @@ pub enum IpProvider {
     Ipinfo,
 }
 
-#[derive(ValueEnum, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, ValueEnum, Debug, Clone, PartialEq)]
 pub enum TrafficPeriod {
     Week,
     Month,
     Year,
 }
+
+#[derive(Serialize, Deserialize, ValueEnum, Debug, Clone, PartialEq)]
+pub enum NetworkStatisticsMode {
+    Natural,
+    Fixed,
+}
+fn network_statistics_mode() -> NetworkStatisticsMode {
+    NetworkStatisticsMode::Fixed
+}
+
 fn traffic_period() -> TrafficPeriod {
     TrafficPeriod::Month
 }
