@@ -49,16 +49,18 @@ CONNS: TCP: 12 | UDP: 4
 相关参数:
 
 - `--disable-network-statistics`: 禁用周期流量统计，上报的总流量回退到原来自网卡启动以来的总流量，默认关闭
-- `--network-statistics-mode`: 流量统计周期的模式，可选 fixed / natural, 默认 fixed.
+- `--network-statistics-mode`: 流量统计周期的模式，可选 fixed / natural, 默认 fixed.   
                fixed: 固定一段时间，时间到后就重置流量    
                natural: 以自然日期为周期，例如每月1号重置流量    
-- `--traffic-period`: 流量统计清零的周期，可选: week/month/year，默认 month (以自然月为周期清零总流量)  
-- `--traffic-reset-day`: 流量统计重置的日期, 默认在每月1号清零。
+- `--network-save-path`: 周期流量统计 的文件保存地址，在 Windows 下默认为 `C:\komari-network.conf`，非 Windows 默认为 `/etc/komari-network.conf` (root) 或 `$HOME/.config/komari-network.conf` (非 root)
+- `--network-interval`: 周期流量统计存内存的间隔长度，单位 sec，默认 10
+- `--network-interval-number`: 周期流量统计 的保存到磁盘间隔次数，默认 6, 即一分钟落盘一次。  
+- `--network-duration`: 仅仅用于 fixed 模式, 周期流量统计 的统计长度，单位 sec，默认 864000 (10 Days).  
+- `--traffic-period`: 仅仅用于 natural 模式，流量统计清零的周期长度，可选: week/month/year，默认 month (以自然月为周期清零总流量)   
+- `--traffic-reset-day`: 仅仅用于 natural 模式，流量统计重置的日期, 默认在每月1号清零。
               清零周期是一周时，可选 1...7, 对应在周1..7重置。  
               清零周期是一月时，可选 1...31, 对应在下月的1...31日重置。  
               清零周期是一年时，格式为12/31，对应在下年的12/31日重置。  
-- `--network-interval`: 周期流量统计存盘的间隔长度，单位 sec，默认 10
-- `--network-save-path`: 周期流量统计 的文件保存地址，在 Windows 下默认为 `C:\komari-network.conf`，非 Windows 默认为 `/etc/komari-network.conf` (root) 或 `$HOME/.config/komari-network.conf` (非 root)
 
 该功能暂未稳定，有问题请及时反馈
 
