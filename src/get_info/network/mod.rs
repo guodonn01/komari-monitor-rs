@@ -1,44 +1,92 @@
-use crate::data_struct::{Connections, Network};
+use crate::data_struct::Connections;
 use log::trace;
 use sysinfo::Networks;
-use tokio::sync::mpsc::Receiver;
 
 #[cfg(target_os = "linux")]
 mod netlink;
 pub mod network_saver;
 
-static mut LAST_NETWORK: (u64, u64) = (0, 0);
+// Use lock-free atomics on platforms that support them for best performance.
+#[cfg(target_has_atomic = "64")]
+mod imp {
+    use super::filter_network;
+    use crate::data_struct::Network;
+    use log::trace;
+    use std::sync::atomic::{AtomicI64, Ordering};
+    use sysinfo::Networks;
 
-pub static mut DURATION: f64 = 0.0;
-pub fn realtime_network(
-    network: &Networks,
-    network_saver_rx: Option<&mut Receiver<(u64, u64)>>,
-) -> Network {
-    let (up, down, total_up, total_down) = filter_network(network);
+    static TRAFFIC_OFFSET_TX: AtomicI64 = AtomicI64::new(0);
+    static TRAFFIC_OFFSET_RX: AtomicI64 = AtomicI64::new(0);
 
-    if let Some(network_saver_rx) = network_saver_rx {
-        if let Ok(network_saver_rx) = network_saver_rx.try_recv() {
-            unsafe {
-                LAST_NETWORK = (network_saver_rx.0, network_saver_rx.1);
-            }
-        }
-    } else {
-        unsafe {
-            LAST_NETWORK = (total_up, total_down);
-        }
+    pub fn update_traffic_offset(offset_tx: i64, offset_rx: i64) {
+        TRAFFIC_OFFSET_TX.store(offset_tx, Ordering::Relaxed);
+        TRAFFIC_OFFSET_RX.store(offset_rx, Ordering::Relaxed);
+        trace!("Traffic offset updated to: tx={}, rx={}", offset_tx, offset_rx);
     }
 
-    unsafe {
-        let network_info = Network {
-            up: (up as f64 / (DURATION / 1000.0)) as u64,
-            down: (down as f64 / (DURATION / 1000.0)) as u64,
-            total_up: LAST_NETWORK.0,
-            total_down: LAST_NETWORK.1,
-        };
-        trace!("REALTIME NETWORK successfully retrieved: {network_info:?}");
-        network_info
+    pub fn realtime_network(network: &Networks, interval_ms: u64) -> Network {
+        let (up, down, total_up, total_down) = filter_network(network);
+
+        let offset_tx = TRAFFIC_OFFSET_TX.load(Ordering::Relaxed);
+        let offset_rx = TRAFFIC_OFFSET_RX.load(Ordering::Relaxed);
+
+        let cycle_total_up = (total_up as i64 + offset_tx).max(0) as u64;
+        let cycle_total_down = (total_down as i64 + offset_rx).max(0) as u64;
+
+        let interval_s = interval_ms as f64 / 1000.0;
+        Network {
+            up: if interval_s > 0.0 { (up as f64 / interval_s) as u64 } else { 0 },
+            down: if interval_s > 0.0 { (down as f64 / interval_s) as u64 } else { 0 },
+            total_up: cycle_total_up,
+            total_down: cycle_total_down,
+        }
     }
 }
+
+// Use a RwLock as a fallback for older 32-bit platforms without 64-bit atomic support.
+#[cfg(not(target_has_atomic = "64"))]
+mod imp {
+    use super::filter_network;
+    use crate::data_struct::Network;
+    use log::{trace, warn};
+    use std::sync::RwLock;
+    use sysinfo::Networks;
+
+    static TRAFFIC_OFFSET: RwLock<(i64, i64)> = RwLock::new((0, 0));
+
+    pub fn update_traffic_offset(offset_tx: i64, offset_rx: i64) {
+        if let Ok(mut offset) = TRAFFIC_OFFSET.write() {
+            *offset = (offset_tx, offset_rx);
+            trace!("Traffic offset updated to: tx={}, rx={}", offset_tx, offset_rx);
+        } else {
+            warn!("Failed to acquire write lock on traffic offset, it may be poisoned.");
+        }
+    }
+
+    pub fn realtime_network(network: &Networks, interval_ms: u64) -> Network {
+        let (up, down, total_up, total_down) = filter_network(network);
+
+        let (offset_tx, offset_rx) = if let Ok(offset) = TRAFFIC_OFFSET.read() {
+            *offset
+        } else {
+            warn!("Failed to acquire read lock on traffic offset, it may be poisoned. Using (0,0).");
+            (0, 0)
+        };
+
+        let cycle_total_up = (total_up as i64 + offset_tx).max(0) as u64;
+        let cycle_total_down = (total_down as i64 + offset_rx).max(0) as u64;
+
+        let interval_s = interval_ms as f64 / 1000.0;
+        Network {
+            up: if interval_s > 0.0 { (up as f64 / interval_s) as u64 } else { 0 },
+            down: if interval_s > 0.0 { (down as f64 / interval_s) as u64 } else { 0 },
+            total_up: cycle_total_up,
+            total_down: cycle_total_down,
+        }
+    }
+}
+
+pub use imp::{realtime_network, update_traffic_offset};
 
 #[cfg(target_os = "linux")]
 pub fn realtime_connections() -> Connections {

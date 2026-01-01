@@ -49,10 +49,18 @@ CONNS: TCP: 12 | UDP: 4
 相关参数:
 
 - `--disable-network-statistics`: 禁用周期流量统计，上报的总流量回退到原来自网卡启动以来的总流量，默认关闭
-- `--network-duration`: 周期流量统计 的统计长度，单位 sec，默认 864000 (10 Days)
-- `--network-interval`: 周期流量统计 的间隔长度，单位 sec，默认 10
-- `--network-interval-number`: 周期流量统计 的保存到磁盘间隔次数，默认 10 (该参数意义为 `硬盘读写间隔时间 = 间隔长度 \* 间隔次数`，默认值为 10 * 10 = 100sec 写入一次硬盘)
+- `--network-statistics-mode`: 流量统计周期的模式，可选 fixed / natural, 默认 fixed.   
+               fixed: 固定一段时间，时间到后就重置流量    
+               natural: 以自然日期为周期，例如每月1号重置流量    
 - `--network-save-path`: 周期流量统计 的文件保存地址，在 Windows 下默认为 `C:\komari-network.conf`，非 Windows 默认为 `/etc/komari-network.conf` (root) 或 `$HOME/.config/komari-network.conf` (非 root)
+- `--network-interval`: 周期流量统计存内存的间隔长度，单位 sec，默认 10
+- `--network-interval-number`: 周期流量统计 的保存到磁盘间隔次数，默认 6, 即一分钟落盘一次。  
+- `--network-duration`: 仅仅用于 fixed 模式, 周期流量统计 的统计长度，单位 sec，默认 864000 (10 Days).  
+- `--traffic-period`: 仅仅用于 natural 模式，流量统计清零的周期长度，可选: week/month/year，默认 month (以自然月为周期清零总流量)   
+- `--traffic-reset-day`: 仅仅用于 natural 模式，流量统计重置的日期, 默认在每月1号清零。  
+              清零周期是一周时，可选 1...7, 对应在周1..7重置。  
+              清零周期是一月时，可选 1...31, 对应在下月的1...31日重置。  
+              清零周期是一年时，格式为12/31，对应在下年的12/31日重置。  
 
 该功能暂未稳定，有问题请及时反馈
 
@@ -141,20 +149,38 @@ Options:
           Disable Network Statistics
           [default: false]
 
-      --network-duration <NETWORK_DURATION>
-          Network Statistics Duration (s)
-          [default: 864000]
-
-      --network-interval <NETWORK_INTERVAL>
-          Network Statistics Interval (s)
-          [default: 10]
-
-      --network-interval-number <NETWORK_INTERVAL_NUMBER>
-          Network Statistics Save to Disk Interval Count (s)
-          [default: 10]
+      --network-statistics-mode <NETWORK_STATISTICS_MODE>
+          Network statistics calculation mode.
+          'fixed' is based on a fixed duration, such as 10 days
+          'natural' is based on natural datetime
+          [default: fixed]
 
       --network-save-path <NETWORK_SAVE_PATH>
           Network Statistics Save Path
+
+      --network-interval <NETWORK_INTERVAL>
+          Network Statistics Save Interval (s)
+          [default: 10]
+
+      --network-duration <NETWORK_DURATION>
+          For 'fixed' mode only
+          Duration for one cycle of network statistics in seconds.
+          [default: 864000]
+
+      --network-interval-number <NETWORK_INTERVAL_NUMBER>
+          Number of intervals to save network statistics to disk.
+          [default: 6]
+
+      --traffic-period <TRAFFIC_PERIOD>
+          Network statistics reset period, for 'natural' mode only.
+          [default: month]
+
+      --traffic-reset-day <TRAFFIC_RESET_DAY>
+          Network statistics reset day, for 'natural' mode only.
+            For 'week', accepts 1-7 (Mon-Sun) or names like 'mon', 'tue'.
+            For 'month', accepts a day number like 1-31.
+            For 'year', accepts a date in 'MM/DD' format, e.g., '12/31'.
+          [default: 1]
 ```
 
 必须设置 `--http-server` / `--token`

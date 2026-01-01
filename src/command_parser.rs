@@ -63,38 +63,56 @@ pub struct Args {
     #[arg(long, default_value_t = false)]
     pub disable_network_statistics: bool,
 
-    /// Network Statistics Duration (s)
-    #[arg(long, default_value_t = 864000)]
-    pub network_duration: u32,
-
-    /// Network Statistics Interval (s)
-    #[arg(long, default_value_t = 10)]
-    pub network_interval: u32,
-
-    /// Network Statistics Save to Disk Interval Count (s)
-    #[arg(long, default_value_t = 10)]
-    pub network_interval_number: u32,
+    #[doc = "Network statistics calculation mode.
+    \t  'fixed' is based on a fixed duration, such as 10 days
+    \t  'natural' is based on natural datetime"]
+    #[arg(long, value_enum, default_value_t = network_statistics_mode())]
+    pub network_statistics_mode: NetworkStatisticsMode,
 
     /// Network Statistics Save Path
     #[arg(long)]
     pub network_save_path: Option<String>,
+
+    /// Network Statistics Save Interval (s)
+    #[arg(long, default_value_t = 10)]
+    pub network_interval: u32,
+
+    #[doc = "For 'fixed' mode only
+    \t  Duration for one cycle of network statistics in seconds."]
+    #[arg(long, default_value_t = 864000)] // 10 days
+    pub network_duration: u32,
+    
+    /// Number of intervals to save network statistics to disk.
+    #[arg(long, default_value_t = 6)]
+    pub network_interval_number: u32,
+
+    /// Network statistics reset period, for 'natural' mode only.
+    #[arg(long, value_enum, default_value_t = traffic_period())]
+    pub traffic_period: TrafficPeriod,
+
+    #[doc = "Network statistics reset day, for 'natural' mode only.
+    \t    For 'week', accepts 1-7 (Mon-Sun) or names like 'mon', 'tue'.
+    \t    For 'month', accepts a day number like 1-31.
+    \t    For 'year', accepts a date in 'MM/DD' format, e.g., '12/31'."]
+    #[arg(long, default_value_t = String::from("1"))]
+    pub traffic_reset_day: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct NetworkConfig {
     pub disable_network_statistics: bool,
-    pub network_duration: u32,
     pub network_interval: u32,
-    pub network_interval_number: u32,
     pub network_save_path: String,
+    pub traffic_period: TrafficPeriod,
+    pub traffic_reset_day: String,
+    pub network_statistics_mode: NetworkStatisticsMode,
+    pub network_duration: u32,
+    pub network_interval_number: u32,
 }
 
 impl Args {
     pub fn par() -> Self {
         let args = Self::parse();
-        unsafe {
-            crate::get_info::network::DURATION = args.realtime_info_interval as f64;
-        }
         args
     }
     pub fn network_config(&self) -> NetworkConfig {
@@ -155,10 +173,13 @@ impl Args {
 
         NetworkConfig {
             disable_network_statistics,
-            network_duration: self.network_duration,
             network_interval: self.network_interval,
-            network_interval_number: self.network_interval_number,
             network_save_path: path,
+            traffic_period: self.traffic_period.clone(),
+            traffic_reset_day: self.traffic_reset_day.clone(),
+            network_statistics_mode: self.network_statistics_mode.clone(),
+            network_duration: self.network_duration,
+            network_interval_number: self.network_interval_number,
         }
     }
 }
@@ -221,15 +242,13 @@ impl Display for Args {
         )?;
 
         if !self.disable_network_statistics {
-            writeln!(f, "    Duration: {} s", self.network_duration)?;
-            writeln!(f, "    Interval: {} s", self.network_interval)?;
-            writeln!(
-                f,
-                "    Save Interval: {} cycles",
-                self.network_interval_number
-            )?;
+            writeln!(f, "    Reset Period: {:?}", self.traffic_period)?;
+            writeln!(f, "    Reset Day: {}", self.traffic_reset_day)?;
+            writeln!(f, "    Save Interval: {} s", self.network_interval)?;
             if let Some(save_path) = &self.network_save_path {
                 writeln!(f, "    Save Path: {}", save_path)?;
+            } else {
+                writeln!(f, "    Save Path: auto-determined")?;
             }
         }
 
@@ -247,6 +266,26 @@ fn ip_provider() -> IpProvider {
 pub enum IpProvider {
     Cloudflare,
     Ipinfo,
+}
+
+#[derive(Serialize, Deserialize, ValueEnum, Debug, Clone, PartialEq)]
+pub enum TrafficPeriod {
+    Week,
+    Month,
+    Year,
+}
+
+#[derive(Serialize, Deserialize, ValueEnum, Debug, Clone, PartialEq)]
+pub enum NetworkStatisticsMode {
+    Natural,
+    Fixed,
+}
+fn network_statistics_mode() -> NetworkStatisticsMode {
+    NetworkStatisticsMode::Fixed
+}
+
+fn traffic_period() -> TrafficPeriod {
+    TrafficPeriod::Month
 }
 
 #[derive(Debug, Clone, ValueEnum)]
